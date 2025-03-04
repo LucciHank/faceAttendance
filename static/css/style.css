@@ -50,23 +50,75 @@ body.dark-theme {
 /* Mode Selector */
 .mode-selector {
     display: flex;
-    gap: 1rem;
+    gap: 2rem;
     margin-bottom: 2rem;
+    justify-content: center;
+    padding: 1rem 0;
 }
 
 .mode-btn {
     background: transparent;
     border: 2px solid var(--accent-primary);
     color: var(--text-primary);
-    padding: 0.8rem 1.5rem;
-    border-radius: 10px;
-    font-weight: 500;
-    transition: all 0.3s ease;
+    padding: 1rem 3rem;
+    border-radius: 12px;
+    font-weight: 600;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+    min-width: 180px;
+    letter-spacing: 0.5px;
+}
+
+.mode-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 15px rgba(0, 255, 157, 0.25);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+    background: rgba(0, 255, 157, 0.05);
 }
 
 .mode-btn.active {
     background: var(--accent-primary);
     color: var(--bg-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 255, 157, 0.4);
+}
+
+.mode-btn.active:hover {
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    border-color: transparent;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 255, 157, 0.5);
+}
+
+.mode-btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.6s ease-out, height 0.6s ease-out;
+}
+
+.mode-btn:active::after {
+    width: 300px;
+    height: 300px;
+    opacity: 0;
+}
+
+.mode-btn i {
+    margin-right: 8px;
+    transition: transform 0.3s ease;
+}
+
+.mode-btn:hover i {
+    transform: scale(1.2);
 }
 
 /* Camera Container */
@@ -343,6 +395,16 @@ body.dark-theme {
 
     .navbar-brand {
         font-size: 1rem;
+    }
+
+    .mode-selector {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .mode-btn {
+        width: 100%;
+        padding: 0.8rem 1.5rem;
     }
 }
 
