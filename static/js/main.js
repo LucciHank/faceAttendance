@@ -101,21 +101,36 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Text to Speech function
     function playTTS(text) {
-        fetch('/tts', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ text: text })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.audio_url) {
-                const audio = new Audio(data.audio_url);
+        return new Promise((resolve, reject) => {
+            fetch('/tts', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ text: text })
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                const audioUrl = URL.createObjectURL(blob);
+                const audio = new Audio(audioUrl);
+                
+                audio.onended = () => {
+                    URL.revokeObjectURL(audioUrl); // Giải phóng memory
+                    resolve();
+                };
+                
+                audio.onerror = (error) => {
+                    URL.revokeObjectURL(audioUrl);
+                    reject(error);
+                };
+                
                 audio.play();
-            }
-        })
-        .catch(error => console.error('Lỗi TTS:', error));
+            })
+            .catch(error => {
+                console.error('Lỗi TTS:', error);
+                reject(error);
+            });
+        });
     }
 
     function startCountdown(seconds, onComplete) {
@@ -422,4 +437,67 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     confirmBtn.addEventListener('click', handleConfirm);
+
+    function handleSuccess(mode) {
+        const successMessage = mode === 'checkin' ? 'Chấm công vào thành công!' : 'Chấm công ra thành công!';
+        const audioText = mode === 'checkin' ? 'Chấm công vào thành công!' : 'Chấm công ra thành công!';
+
+        // Hiển thị thông báo thành công
+        Swal.fire({
+            icon: 'success',
+            title: successMessage,
+            html: `
+                <div class="success-content">
+                    <div class="success-info">
+                        <div class="info-row">
+                            <i class="fas fa-user"></i>
+                            <span>Nhân viên: Nguyễn Văn A</span>
+                        </div>
+                        <div class="info-row">
+                            <i class="fas fa-clock"></i>
+                            <span>Thời gian: ${getCurrentTime()}</span>
+                        </div>
+                    </div>
+                </div>
+            `,
+            showConfirmButton: false,
+            timer: 3000,
+            customClass: {
+                popup: 'success-dialog'
+            }
+        });
+
+        // Phát âm thanh thông báo
+        playTTS(audioText).then(() => {
+            // Đợi 5 giây sau khi phát âm thanh xong
+            setTimeout(() => {
+                // Bắt đầu đếm ngược 3 giây
+                let countdown = 3;
+                const countdownInterval = setInterval(() => {
+                    if (countdown > 0) {
+                        Swal.fire({
+                            title: `Hệ thống sẽ reset sau ${countdown} giây`,
+                            timer: 1000,
+                            showConfirmButton: false,
+                            customClass: {
+                                popup: 'animated-toast'
+                            }
+                        });
+                        countdown--;
+                    } else {
+                        clearInterval(countdownInterval);
+                        resetSystem();
+                    }
+                }, 1000);
+            }, 5000); // Đợi 5 giây
+        });
+    }
+
+    function resetSystem() {
+        // Reset lại trạng thái hệ thống
+        isProcessing = false;
+        document.getElementById('checkinBtn').disabled = false;
+        document.getElementById('checkoutBtn').disabled = false;
+        // Reset các trạng thái khác nếu cần
+    }
 });

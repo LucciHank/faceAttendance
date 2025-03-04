@@ -1,10 +1,10 @@
-from flask import Flask, Response, render_template, jsonify, request, url_for
+from flask import Flask, Response, render_template, jsonify, request, url_for, send_file
 import cv2
 import time
 import threading
 import os
 from gtts import gTTS
-import uuid
+from io import BytesIO
 import mediapipe as mp
 from datetime import datetime
 
@@ -165,7 +165,7 @@ def get_status():
 
 @app.route('/tts', methods=['POST'])
 def text_to_speech():
-    """API endpoint để tạo file audio từ text"""
+    """API endpoint để tạo và phát audio trực tiếp từ text"""
     data = request.get_json()
     text = data.get('text', '')
     
@@ -173,36 +173,22 @@ def text_to_speech():
         return jsonify({'error': 'No text provided'}), 400
     
     try:
-        # Tạo tên file độc nhất
-        filename = f"tts_{uuid.uuid4()}.mp3"
-        filepath = os.path.join('static', 'audio', filename)
-        
-        # Đảm bảo thư mục tồn tại
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        
-        # Tạo file audio bằng gTTS
+        # Tạo audio trong memory buffer thay vì lưu file
+        mp3_fp = BytesIO()
         tts = gTTS(text=text, lang='vi')
-        tts.save(filepath)
+        tts.write_to_fp(mp3_fp)
+        mp3_fp.seek(0)
         
-        # Trả về URL của file audio
-        audio_url = url_for('static', filename=f'audio/{filename}')
-        return jsonify({'audio_url': audio_url})
+        # Trả về audio stream trực tiếp
+        return send_file(
+            mp3_fp,
+            mimetype='audio/mpeg',
+            as_attachment=True,
+            download_name='speech.mp3'
+        )
     except Exception as e:
         print(f"Lỗi khi tạo audio: {str(e)}")
         return jsonify({'error': 'Lỗi khi tạo audio'}), 500
-
-@app.route('/cleanup_audio', methods=['POST'])
-def cleanup_audio():
-    """API endpoint để dọn dẹp file audio cũ"""
-    audio_dir = os.path.join('static', 'audio')
-    if os.path.exists(audio_dir):
-        for file in os.listdir(audio_dir):
-            if file.startswith('tts_'):
-                try:
-                    os.remove(os.path.join(audio_dir, file))
-                except:
-                    pass
-    return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
     app.run(debug=True)
