@@ -1,0 +1,305 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Quản lý khiếu nại{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="page-title">
+            <i class="fas fa-exclamation-circle me-2"></i>Quản lý khiếu nại
+        </h2>
+    </div>
+
+    <!-- Complaints List -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Mã NV</th>
+                            <th>Tên nhân viên</th>
+                            <th>Thời gian</th>
+                            <th>Lý do</th>
+                            <th>Trạng thái</th>
+                            <th class="text-end">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if complaints %}
+                            {% for complaint in complaints %}
+                            <tr>
+                                <td>{{ complaint.id }}</td>
+                                <td>{{ complaint.employee_code }}</td>
+                                <td>{{ complaint.employee_name }}</td>
+                                <td>{{ complaint.complaint_time }}</td>
+                                <td>{{ complaint.reason }}</td>
+                                <td>
+                                    {% if complaint.status == 'pending' %}
+                                    <span class="badge bg-warning">Chờ xử lý</span>
+                                    {% elif complaint.status == 'approved' %}
+                                    <span class="badge bg-success">Đã duyệt</span>
+                                    {% elif complaint.status == 'rejected' %}
+                                    <span class="badge bg-danger">Từ chối</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-light view-btn" 
+                                            data-id="{{ complaint.id }}" 
+                                            data-image="{{ complaint.image_data }}">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    
+                                    {% if complaint.status == 'pending' %}
+                                    <button class="btn btn-sm btn-success approve-btn" 
+                                            data-id="{{ complaint.id }}">
+                                        <i class="fas fa-check"></i> Duyệt
+                                    </button>
+                                    <button class="btn btn-sm btn-danger reject-btn"
+                                            data-id="{{ complaint.id }}">
+                                        <i class="fas fa-times"></i> Từ chối
+                                    </button>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center">Không có khiếu nại nào</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Modal -->
+<div class="modal fade" id="viewModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Chi tiết khiếu nại</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <img id="complaintImage" class="img-fluid rounded" alt="Complaint Image">
+                    </div>
+                    <div class="col-md-6">
+                        <div id="complaintDetails">
+                            <!-- Details loaded dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Approval Modal -->
+<div class="modal fade" id="approveModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Duyệt khiếu nại</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bạn có chắc chắn muốn duyệt khiếu nại này không?</p>
+                <p class="text-info">Nhân viên sẽ được ghi nhận thời gian chấm công tại thời điểm khiếu nại.</p>
+                
+                <div class="mb-3">
+                    <label for="approveNote" class="form-label">Ghi chú (không bắt buộc)</label>
+                    <textarea id="approveNote" class="form-control" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-success" id="confirmApprove">Xác nhận duyệt</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Từ chối khiếu nại</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="rejectReason" class="form-label">Lý do từ chối <span class="text-danger">*</span></label>
+                    <textarea id="rejectReason" class="form-control" rows="3" required></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-danger" id="confirmReject">Xác nhận từ chối</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let currentComplaintId = null;
+    
+    // View complaint details
+    document.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const id = this.dataset.id;
+            const image = this.dataset.image;
+            
+            // Display image
+            document.getElementById('complaintImage').src = image;
+            
+            // Load details
+            fetch(`/api/complaint/${id}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        const complaint = data.complaint;
+                        document.getElementById('complaintDetails').innerHTML = `
+                            <h5>Thông tin khiếu nại</h5>
+                            <p><strong>Mã nhân viên:</strong> ${complaint.employee_code}</p>
+                            <p><strong>Tên nhân viên:</strong> ${complaint.employee_name}</p>
+                            <p><strong>Thời gian:</strong> ${new Date(complaint.complaint_time).toLocaleString()}</p>
+                            <p><strong>Lý do:</strong> ${complaint.reason}</p>
+                            <p><strong>Trạng thái:</strong> ${getStatusText(complaint.status)}</p>
+                            ${complaint.admin_note ? `<p><strong>Ghi chú admin:</strong> ${complaint.admin_note}</p>` : ''}
+                        `;
+                    }
+                })
+                .catch(error => console.error('Error loading complaint details:', error));
+                
+            const viewModal = new bootstrap.Modal(document.getElementById('viewModal'));
+            viewModal.show();
+        });
+    });
+    
+    // Approve complaint
+    document.querySelectorAll('.approve-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            currentComplaintId = this.dataset.id;
+            const approveModal = new bootstrap.Modal(document.getElementById('approveModal'));
+            approveModal.show();
+        });
+    });
+    
+    // Reject complaint
+    document.querySelectorAll('.reject-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            currentComplaintId = this.dataset.id;
+            const rejectModal = new bootstrap.Modal(document.getElementById('rejectModal'));
+            rejectModal.show();
+        });
+    });
+    
+    // Confirm approve
+    document.getElementById('confirmApprove').addEventListener('click', function() {
+        const note = document.getElementById('approveNote').value;
+        
+        fetch(`/admin/complaints/approve/${currentComplaintId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ note })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('approveModal')).hide();
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Đã duyệt khiếu nại',
+                    showConfirmButton: false,
+                    timer: 1500
+                }).then(() => window.location.reload());
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Lỗi',
+                    text: data.error
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error approving complaint:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Lỗi kết nối',
+                text: 'Không thể kết nối đến server'
+            });
+        });
+    });
+    
+    // Confirm reject
+    document.getElementById('confirmReject').addEventListener('click', function() {
+        const reason = document.getElementById('rejectReason').value;
+        
+        if (!reason) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Thiếu thông tin',
+                text: 'Vui lòng nhập lý do từ chối'
+            });
+            return;
+        }
+        
+        fetch(`/admin/complaints/reject/${currentComplaintId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('rejectModal')).hide();
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Đã từ chối khiếu nại',
+                    showConfirmButton: false,
+                    timer: 1500
+                }).then(() => window.location.reload());
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Lỗi',
+                    text: data.error
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error rejecting complaint:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Lỗi kết nối',
+                text: 'Không thể kết nối đến server'
+            });
+        });
+    });
+    
+    function getStatusText(status) {
+        switch (status) {
+            case 'pending': return '<span class="badge bg-warning">Chờ xử lý</span>';
+            case 'approved': return '<span class="badge bg-success">Đã duyệt</span>';
+            case 'rejected': return '<span class="badge bg-danger">Từ chối</span>';
+            default: return status;
+        }
+    }
+});
+</script>
+{% endblock %} 

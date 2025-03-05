@@ -387,19 +387,23 @@ document.addEventListener('DOMContentLoaded', function() {
     if (openCamBtn) openCamBtn.addEventListener('click', startCamera);
     if (closeCamBtn) closeCamBtn.addEventListener('click', stopCamera);
 
-    checkInBtn.addEventListener('click', function() {
-        currentMode = 'checkin';
-        checkInBtn.classList.add('active');
-        checkOutBtn.classList.remove('active');
-        startCamera();
-    });
+    if (checkInBtn) {
+        checkInBtn.addEventListener('click', function() {
+            currentMode = 'checkin';
+            checkInBtn.classList.add('active');
+            checkOutBtn.classList.remove('active');
+            startCamera();
+        });
+    }
 
-    checkOutBtn.addEventListener('click', function() {
-        currentMode = 'checkout';
-        checkOutBtn.classList.add('active');
-        checkInBtn.classList.remove('active');
-        startCamera();
-    });
+    if (checkOutBtn) {
+        checkOutBtn.addEventListener('click', function() {
+            currentMode = 'checkout';
+            checkOutBtn.classList.add('active');
+            checkInBtn.classList.remove('active');
+            startCamera();
+        });
+    }
 
     videoStream.addEventListener('error', function() {
         loadingIndicator.classList.add("d-none");
@@ -464,7 +468,9 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
-    confirmBtn.addEventListener('click', handleConfirm);
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', handleConfirm);
+    }
 
     function handleSuccess(mode) {
         const successMessage = mode === 'checkin' ? 'Chấm công vào thành công!' : 'Chấm công ra thành công!';
@@ -905,30 +911,38 @@ document.addEventListener('DOMContentLoaded', function() {
     if (openCamBtn) openCamBtn.addEventListener('click', startCamera);
     if (closeCamBtn) closeCamBtn.addEventListener('click', stopCamera);
 
-    checkInBtn.addEventListener('click', function() {
-        if (isProcessing) return;
-        
-        currentMode = 'checkin';
-        checkInBtn.classList.add('active');
-        checkOutBtn.classList.remove('active');
-        startCamera();
-    });
+    if (checkInBtn) {
+        checkInBtn.addEventListener('click', function() {
+            if (isProcessing) return;
+            
+            currentMode = 'checkin';
+            checkInBtn.classList.add('active');
+            checkOutBtn.classList.remove('active');
+            startCamera();
+        });
+    }
 
-    checkOutBtn.addEventListener('click', function() {
-        if (isProcessing) return;
-        
-        currentMode = 'checkout';
-        checkOutBtn.classList.add('active');
-        checkInBtn.classList.remove('active');
-        startCamera();
-    });
+    if (checkOutBtn) {
+        checkOutBtn.addEventListener('click', function() {
+            if (isProcessing) return;
+            
+            currentMode = 'checkout';
+            checkOutBtn.classList.add('active');
+            checkInBtn.classList.remove('active');
+            startCamera();
+        });
+    }
 
-    confirmBtn.addEventListener('click', handleConfirm);
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', handleConfirm);
+    }
     
-    refreshActiveBtn.addEventListener('click', function() {
-        loadActiveEmployees();
-        showToast('Đã làm mới danh sách nhân viên', 'info');
-    });
+    if (refreshActiveBtn) {
+        refreshActiveBtn.addEventListener('click', function() {
+            loadActiveEmployees();
+            showToast('Đã làm mới danh sách nhân viên', 'info');
+        });
+    }
 
     videoStream.addEventListener('error', function() {
         console.error('Lỗi kết nối video');
@@ -942,35 +956,37 @@ document.addEventListener('DOMContentLoaded', function() {
     setInterval(loadActiveEmployees, 30000);
 
     // Thêm event listener cho nút khiếu nại
-    document.getElementById('complaintBtn').addEventListener('click', function() {
-        if (isProcessing) return;
-        
-        currentMode = 'complaint';
-        complaintBtn.classList.add('active');
-        checkinBtn.classList.remove('active');
-        checkoutBtn.classList.remove('active');
-        
-        // Bật camera nếu chưa bật
-        if (!cameraInitialized) {
-            startCamera();
-        }
-        
-        // Chụp ảnh hiện tại
-        captureImageForComplaint();
-        
-        // Hiển thị modal khiếu nại
-        const complaintModal = new bootstrap.Modal(document.getElementById('complaintModal'));
-        complaintModal.show();
-        
-        // Cập nhật thời gian hiện tại
-        const now = new Date();
-        document.getElementById('complaintTime').value = now.toLocaleString();
-        
-        // Điền thông tin nhân viên nếu đã phát hiện
-        if (detectedEmployee) {
-            document.getElementById('employeeCode').value = detectedEmployee.employee_code;
-        }
-    });
+    if (complaintBtn) {
+        complaintBtn.addEventListener('click', function() {
+            if (isProcessing) return;
+            
+            currentMode = 'complaint';
+            complaintBtn.classList.add('active');
+            checkInBtn.classList.remove('active');
+            checkOutBtn.classList.remove('active');
+            
+            // Bật camera nếu chưa bật
+            if (!cameraInitialized) {
+                startCamera();
+            }
+            
+            // Chụp ảnh hiện tại
+            captureImageForComplaint();
+            
+            // Hiển thị modal khiếu nại
+            const complaintModal = new bootstrap.Modal(document.getElementById('complaintModal'));
+            complaintModal.show();
+            
+            // Cập nhật thời gian hiện tại
+            const now = new Date();
+            document.getElementById('complaintTime').value = now.toLocaleString();
+            
+            // Điền thông tin nhân viên nếu đã phát hiện
+            if (detectedEmployee) {
+                document.getElementById('employeeCode').value = detectedEmployee.employee_code;
+            }
+        });
+    }
 
     // Chụp ảnh cho form khiếu nại
     function captureImageForComplaint() {
@@ -993,65 +1009,69 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Chụp lại ảnh
-    document.getElementById('retakePhotoBtn').addEventListener('click', function() {
-        captureImageForComplaint();
-    });
+    if (document.getElementById('retakePhotoBtn')) {
+        document.getElementById('retakePhotoBtn').addEventListener('click', function() {
+            captureImageForComplaint();
+        });
+    }
 
     // Gửi đơn khiếu nại
-    document.getElementById('submitComplaintBtn').addEventListener('click', function() {
-        const form = document.getElementById('complaintForm');
-        
-        // Kiểm tra dữ liệu nhập
-        const employeeCode = document.getElementById('employeeCode').value;
-        const reason = document.getElementById('complaintReason').value;
-        
-        if (!employeeCode || !reason || !complaintImageData) {
-            showToast('Vui lòng điền đầy đủ thông tin và chụp ảnh', 'error');
-            return;
-        }
-        
-        // Tạo FormData
-        const formData = new FormData(form);
-        formData.append('image', complaintImageData);
-        formData.append('complaint_time', document.getElementById('complaintTime').value);
-        
-        // Gửi dữ liệu
-        fetch('/submit-complaint', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Đóng modal
-                bootstrap.Modal.getInstance(document.getElementById('complaintModal')).hide();
-                
-                // Hiển thị thông báo thành công
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Gửi đơn thành công!',
-                    text: 'Đơn khiếu nại của bạn đã được ghi nhận và sẽ được xử lý sớm.',
-                    confirmButtonColor: 'var(--accent-primary)'
-                });
-                
-                // Thông báo bằng giọng nói
-                playTTS('Đơn khiếu nại của bạn đã được gửi thành công. Hệ thống sẽ xử lý trong thời gian sớm nhất.');
-                
-                // Reset form
-                form.reset();
-                complaintImageData = null;
-                
-                // Reset chế độ
-                resetSystem();
-            } else {
-                showToast(data.error || 'Có lỗi xảy ra khi gửi đơn', 'error');
+    if (document.getElementById('submitComplaintBtn')) {
+        document.getElementById('submitComplaintBtn').addEventListener('click', function() {
+            const form = document.getElementById('complaintForm');
+            
+            // Kiểm tra dữ liệu nhập
+            const employeeCode = document.getElementById('employeeCode').value;
+            const reason = document.getElementById('complaintReason').value;
+            
+            if (!employeeCode || !reason || !complaintImageData) {
+                showToast('Vui lòng điền đầy đủ thông tin và chụp ảnh', 'error');
+                return;
             }
-        })
-        .catch(error => {
-            console.error('Lỗi khi gửi đơn khiếu nại:', error);
-            showToast('Lỗi khi gửi đơn khiếu nại', 'error');
+            
+            // Tạo FormData
+            const formData = new FormData(form);
+            formData.append('image', complaintImageData);
+            formData.append('complaint_time', document.getElementById('complaintTime').value);
+            
+            // Gửi dữ liệu
+            fetch('/submit-complaint', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Đóng modal
+                    bootstrap.Modal.getInstance(document.getElementById('complaintModal')).hide();
+                    
+                    // Hiển thị thông báo thành công
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Gửi đơn thành công!',
+                        text: 'Đơn khiếu nại của bạn đã được ghi nhận và sẽ được xử lý sớm.',
+                        confirmButtonColor: 'var(--accent-primary)'
+                    });
+                    
+                    // Thông báo bằng giọng nói
+                    playTTS('Đơn khiếu nại của bạn đã được gửi thành công. Hệ thống sẽ xử lý trong thời gian sớm nhất.');
+                    
+                    // Reset form
+                    form.reset();
+                    complaintImageData = null;
+                    
+                    // Reset chế độ
+                    resetSystem();
+                } else {
+                    showToast(data.error || 'Có lỗi xảy ra khi gửi đơn', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Lỗi khi gửi đơn khiếu nại:', error);
+                showToast('Lỗi khi gửi đơn khiếu nại', 'error');
+            });
         });
-    });
+    }
 
     // Camera luôn bật khi trang được tải xong
     startCamera();
@@ -1060,79 +1080,84 @@ document.addEventListener('DOMContentLoaded', function() {
     const attendanceBtn = document.getElementById('attendanceBtn');
     
     // Xử lý sự kiện khi bấm nút chấm công
-    attendanceBtn.addEventListener('click', function() {
-        if (isProcessing) return;
-        
-        if (!lastFaceDetected || !detectedEmployee) {
-            showToast('Vui lòng đứng thẳng và nhìn vào camera', 'warning');
-            return;
-        }
-        
-        isProcessing = true;
-        loadingIndicator.classList.remove('d-none');
-        
-        const timestamp = new Date();
-        
-        fetch('/attendance', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                employee_id: detectedEmployee.id,
-                check_time: timestamp.toISOString()
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            loadingIndicator.classList.add('d-none');
+    if (attendanceBtn) {
+        attendanceBtn.addEventListener('click', function() {
+            if (isProcessing) return;
             
-            if (data.success) {
-                // Hiển thị hiệu ứng thành công
-                showSuccessDetection();
-                
-                // Thông báo
-                const message = data.is_check_in ? 
-                    `Đã chấm công vào lúc ${timestamp.toLocaleTimeString()}` : 
-                    `Đã cập nhật giờ ra về lúc ${timestamp.toLocaleTimeString()}`;
-                    
-                showToast(message, 'success');
-                
-                // Phát âm thanh
-                playTTS(message);
-                
-                // Cập nhật danh sách nhân viên đang làm việc
-                loadActiveEmployees();
-                
-                // Cập nhật thông tin nhân viên
-                updateEmployeeInfo(detectedEmployee);
-            } else {
-                showToast(data.error, 'error');
+            if (!lastFaceDetected || !detectedEmployee) {
+                showToast('Vui lòng đứng thẳng và nhìn vào camera', 'warning');
+                return;
             }
-        })
-        .catch(error => {
-            console.error('Lỗi:', error);
-            showToast('Có lỗi xảy ra khi chấm công', 'error');
-        })
-        .finally(() => {
-            isProcessing = false;
-            loadingIndicator.classList.add('d-none');
+            
+            isProcessing = true;
+            loadingIndicator.classList.remove('d-none');
+            
+            const timestamp = new Date();
+            
+            fetch('/attendance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    employee_id: detectedEmployee.id,
+                    check_time: timestamp.toISOString()
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingIndicator.classList.add('d-none');
+                
+                if (data.success) {
+                    // Hiển thị hiệu ứng thành công
+                    showSuccessDetection();
+                    
+                    // Thông báo
+                    const message = data.is_check_in ? 
+                        `Đã chấm công vào lúc ${timestamp.toLocaleTimeString()}` : 
+                        `Đã cập nhật giờ ra về lúc ${timestamp.toLocaleTimeString()}`;
+                        
+                    showToast(message, 'success');
+                    
+                    // Phát âm thanh
+                    playTTS(message);
+                    
+                    // Cập nhật danh sách nhân viên đang làm việc
+                    loadActiveEmployees();
+                    
+                    // Cập nhật thông tin nhân viên
+                    updateEmployeeInfo(detectedEmployee);
+                } else {
+                    showToast(data.error, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Lỗi:', error);
+                showToast('Có lỗi xảy ra khi chấm công', 'error');
+            })
+            .finally(() => {
+                isProcessing = false;
+                loadingIndicator.classList.add('d-none');
+            });
         });
-    });
+    }
 
     // Xử lý đăng nhập admin
-    const adminLoginSubmitBtn = document.getElementById('adminLoginSubmitBtn');
-    if (adminLoginSubmitBtn) {
-        adminLoginSubmitBtn.addEventListener('click', function() {
+    const adminLoginForm = document.getElementById('adminLoginForm');
+    if (adminLoginForm) {
+        adminLoginForm.addEventListener('submit', function(e) {
+            e.preventDefault(); // Ngăn form submit mặc định
+            
             const username = document.getElementById('adminUsername').value;
             const password = document.getElementById('adminPassword').value;
             
+            // Kiểm tra dữ liệu
             if (!username || !password) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Thiếu thông tin',
-                    text: 'Vui lòng nhập tên đăng nhập và mật khẩu',
-                    confirmButtonColor: 'var(--accent-primary)'
+                    text: 'Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu',
+                    confirmButtonColor: '#00ff9d'
                 });
                 return;
             }
@@ -1146,48 +1171,65 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             
-            fetch('/admin-login', {
+            // Gửi request đăng nhập
+            fetch('/admin/login', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ username, password })
+                body: JSON.stringify({
+                    username: username,
+                    password: password
+                }),
+                credentials: 'same-origin'
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
+                console.log("Login response:", data);
+                
                 if (data.success) {
+                    // Đóng modal trước khi chuyển hướng
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('adminLoginModal'));
+                    if (modal) {
+                        modal.hide();
+                    }
+                    
                     Swal.fire({
                         icon: 'success',
                         title: 'Đăng nhập thành công!',
-                        text: 'Đang chuyển hướng đến trang quản trị...',
+                        text: 'Đang chuyển hướng...',
                         timer: 1500,
-                        showConfirmButton: false,
-                        willClose: () => {
-                            window.location.href = data.redirect || '/admin';
-                        }
+                        showConfirmButton: false
+                    }).then(() => {
+                        window.location.href = data.redirect;
                     });
                 } else {
                     Swal.fire({
                         icon: 'error',
                         title: 'Đăng nhập thất bại',
                         text: data.message || 'Tên đăng nhập hoặc mật khẩu không đúng',
-                        confirmButtonColor: 'var(--accent-primary)'
+                        confirmButtonColor: '#00ff9d'
                     });
                 }
             })
             .catch(error => {
-                console.error('Lỗi khi đăng nhập:', error);
+                console.error('Login error:', error);
                 Swal.fire({
                     icon: 'error',
-                    title: 'Lỗi kết nối',
-                    text: 'Có lỗi xảy ra khi đăng nhập. Vui lòng thử lại sau.',
-                    confirmButtonColor: 'var(--accent-primary)'
+                    title: 'Lỗi',
+                    text: 'Có lỗi xảy ra khi đăng nhập',
+                    confirmButtonColor: '#00ff9d'
                 });
             });
         });
     }
 
-    // Luôn mở camera khi trang tải xong
+    // Luôn mở camera khi trang được tải xong
     startCamera();
     
     // Hàm đếm ngược khi phát hiện khuôn mặt liên tục
@@ -1264,7 +1306,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Cập nhật các thông tin khác nếu có
         if (employee.profile_image) {
-            document.getElementById('employeeAvatar').src = '/' + employee.profile_image;
+            document.getElementById('employeeAvatar').src = '/' + employee.profile_code;
         }
         
         // Kiểm tra trạng thái chấm công
@@ -1392,26 +1434,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Thêm hàm updateConfidenceBar
     function updateConfidenceBar(confidence) {
-        const confidenceBar = document.getElementById('confidenceBar');
-        if (confidenceBar) {
-            // Cập nhật độ rộng theo phần trăm
-            const percent = confidence * 100;
-            confidenceBar.style.width = `${percent}%`;
+        const progressBar = document.querySelector('#confidenceBar');
+        if (progressBar) {
+            const percent = (confidence * 100).toFixed(2);
+            progressBar.style.width = `${percent}%`;
+            progressBar.textContent = `${percent}%`;
             
-            // Thay đổi màu dựa trên mức độ tin cậy
-            if (percent < 50) {
-                confidenceBar.style.background = 'linear-gradient(to right, #ff4757, #ff6b81)'; // Đỏ
-            } else if (percent < 75) {
-                confidenceBar.style.background = 'linear-gradient(to right, #ffa502, #ff7f50)'; // Cam
+            // Đổi màu theo độ tin cậy
+            if (confidence >= 0.8) {
+                progressBar.classList.remove('bg-warning', 'bg-danger');
+                progressBar.classList.add('bg-success');
+            } else if (confidence >= 0.6) {
+                progressBar.classList.remove('bg-success', 'bg-danger');
+                progressBar.classList.add('bg-warning');
             } else {
-                confidenceBar.style.background = 'linear-gradient(to right, #00ccff, #00ff9d)'; // Xanh
-            }
-            
-            // Thêm hiệu ứng glow khi độ tin cậy cao
-            if (percent > 85) {
-                confidenceBar.style.boxShadow = '0 0 10px rgba(0, 255, 157, 0.7)';
-            } else {
-                confidenceBar.style.boxShadow = 'none';
+                progressBar.classList.remove('bg-success', 'bg-warning');
+                progressBar.classList.add('bg-danger');
             }
         }
     }
@@ -1437,5 +1475,36 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(error => console.error('Lỗi khi lấy thông tin nhận diện:', error));
     }, 500);
+
+    // Kiểm tra và yêu cầu quyền truy cập camera
+    async function initCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: {
+                    width: 640,
+                    height: 480,
+                    facingMode: "user"
+                }
+            });
+            
+            const video = document.querySelector('#videoElement');
+            if (video) {
+                video.srcObject = stream;
+                console.log("Đã kết nối camera thành công");
+            }
+            
+        } catch (err) {
+            console.error("Lỗi camera:", err);
+            Swal.fire({
+                icon: 'error',
+                title: 'Không thể truy cập camera',
+                text: 'Vui lòng kiểm tra quyền truy cập camera trong cài đặt trình duyệt',
+                confirmButtonColor: 'var(--accent-primary)'
+            });
+        }
+    }
+
+    // Gọi hàm khi trang load
+    initCamera();
 
 })

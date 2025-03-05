@@ -1,0 +1,399 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Báo cáo & Thống kê{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="page-title">
+            <i class="fas fa-chart-bar me-2"></i>Báo cáo & Thống kê
+        </h2>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-light" id="exportPDF">
+                <i class="fas fa-file-pdf me-2"></i>Xuất PDF
+            </button>
+            <button class="btn btn-primary" id="exportExcel">
+                <i class="fas fa-file-excel me-2"></i>Xuất Excel
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter Section -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Khoảng thời gian</label>
+                    <select class="form-select" id="timeRange">
+                        <option value="today">Hôm nay</option>
+                        <option value="yesterday">Hôm qua</option>
+                        <option value="week">Tuần này</option>
+                        <option value="month">Tháng này</option>
+                        <option value="custom">Tùy chọn...</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Phòng ban</label>
+                    <select class="form-select" id="department">
+                        <option value="">Tất cả</option>
+                        {% for dept in departments %}
+                        <option value="{{ dept.id }}">{{ dept.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Trạng thái</label>
+                    <select class="form-select" id="status">
+                        <option value="">Tất cả</option>
+                        <option value="on_time">Đúng giờ</option>
+                        <option value="late">Đi muộn</option>
+                        <option value="absent">Vắng mặt</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" id="applyFilter">
+                        <i class="fas fa-filter me-2"></i>Lọc
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-icon">
+                    <i class="fas fa-user-check"></i>
+                </div>
+                <div class="stats-value" id="totalAttendance">0</div>
+                <div class="stats-label">Tổng số lần chấm công</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stats-value" id="onTimeRate">0%</div>
+                <div class="stats-label">Tỷ lệ đúng giờ</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="stats-value" id="lateRate">0%</div>
+                <div class="stats-label">Tỷ lệ đi muộn</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="stats-value" id="trendIndicator">0%</div>
+                <div class="stats-label">So với kỳ trước</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 1 -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-8">
+            <div class="chart-container">
+                <h5>Thống kê chấm công theo thời gian</h5>
+                <canvas id="attendanceTimelineChart"></canvas>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="chart-container">
+                <h5>Phân bố trạng thái</h5>
+                <canvas id="statusDistributionChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 2 -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-6">
+            <div class="chart-container">
+                <h5>Thống kê theo phòng ban</h5>
+                <canvas id="departmentChart"></canvas>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="chart-container">
+                <h5>Xu hướng đi muộn theo thời gian</h5>
+                <canvas id="lateTrendChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attendance History Table -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Lịch sử chấm công</h5>
+            <div class="d-flex gap-2">
+                <div class="search-box">
+                    <input type="text" class="form-control" id="searchInput" placeholder="Tìm kiếm...">
+                </div>
+                <button class="btn btn-sm btn-outline-light" id="refreshTable">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>Mã NV</th>
+                            <th>Họ tên</th>
+                            <th>Phòng ban</th>
+                            <th>Trạng thái</th>
+                            <th>Độ tin cậy</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendanceHistory">
+                        <!-- Data will be loaded dynamically -->
+                    </tbody>
+                </table>
+            </div>
+            <!-- Pagination -->
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <div class="page-info">
+                    Hiển thị <span id="pageStart">1</span> - <span id="pageEnd">10</span> 
+                    trong số <span id="totalRecords">0</span> bản ghi
+                </div>
+                <div class="pagination-controls">
+                    <button class="btn btn-sm btn-outline-light" id="prevPage">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span class="mx-3" id="currentPage">1</span>
+                    <button class="btn btn-sm btn-outline-light" id="nextPage">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="company-info mb-4">
+        <h5 class="mb-2">Thông tin công ty</h5>
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Tên công ty:</strong> {{ company.name }}</p>
+                        <p class="mb-0"><strong>Mã công ty:</strong> {{ company.code }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1"><strong>Số phòng ban:</strong> {{ departments|length }}</p>
+                        <p class="mb-0"><strong>Tổng số nhân viên:</strong> {{ stats.total_employees }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Chart instances
+let timelineChart = null;
+let distributionChart = null;
+let departmentChart = null;
+let trendChart = null;
+
+function initCharts() {
+    // Timeline Chart
+    const ctx1 = document.getElementById('attendanceTimelineChart').getContext('2d');
+    timelineChart = new Chart(ctx1, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Đúng giờ',
+                data: [],
+                borderColor: '#00ffb3',
+                tension: 0.4
+            }, {
+                label: 'Đi muộn',
+                data: [],
+                borderColor: '#ff2366',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#fff' }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#fff' }
+                },
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#fff' }
+                }
+            }
+        }
+    });
+
+    // Distribution Chart
+    const ctx2 = document.getElementById('statusDistributionChart').getContext('2d');
+    distributionChart = new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+            labels: ['Đúng giờ', 'Đi muộn', 'Vắng mặt'],
+            datasets: [{
+                data: [0, 0, 0],
+                backgroundColor: ['#00ffb3', '#ff2366', '#ffb300']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#fff' }
+                }
+            }
+        }
+    });
+
+    // Department Chart
+    const ctx3 = document.getElementById('departmentChart').getContext('2d');
+    departmentChart = new Chart(ctx3, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Đúng giờ',
+                data: [],
+                backgroundColor: '#00ffb3'
+            }, {
+                label: 'Đi muộn',
+                data: [],
+                backgroundColor: '#ff2366'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#fff' }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#fff' }
+                },
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#fff' }
+                }
+            }
+        }
+    });
+
+    // Trend Chart
+    const ctx4 = document.getElementById('lateTrendChart').getContext('2d');
+    trendChart = new Chart(ctx4, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Tỷ lệ đi muộn',
+                data: [],
+                borderColor: '#ff2366',
+                tension: 0.4,
+                fill: true,
+                backgroundColor: 'rgba(255,35,102,0.1)'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#fff' }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { 
+                        color: '#fff',
+                        callback: value => value + '%'
+                    }
+                },
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#fff' }
+                }
+            }
+        }
+    });
+}
+
+// Load and update data
+function loadReportData() {
+    const timeRange = document.getElementById('timeRange').value;
+    const department = document.getElementById('department').value;
+    const status = document.getElementById('status').value;
+
+    fetch('/api/v1/admin/report-data', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            timeRange,
+            department,
+            status
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        updateCharts(data);
+        updateStats(data);
+        updateTable(data.history);
+    })
+    .catch(error => console.error('Error loading report data:', error));
+}
+
+// Initialize when document is ready
+document.addEventListener('DOMContentLoaded', function() {
+    initCharts();
+    loadReportData();
+
+    // Event listeners
+    document.getElementById('applyFilter').addEventListener('click', loadReportData);
+    document.getElementById('refreshTable').addEventListener('click', loadReportData);
+    document.getElementById('searchInput').addEventListener('input', filterTable);
+    document.getElementById('exportPDF').addEventListener('click', exportPDF);
+    document.getElementById('exportExcel').addEventListener('click', exportExcel);
+});
+</script>
+{% endblock %} 

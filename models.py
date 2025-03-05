@@ -1,7 +1,32 @@
-import sqlite3
 from datetime import datetime
+import sqlite3
+import json
 
 DB_PATH = 'attendance.db'
+
+class Employee:
+    def __init__(self, id, employee_id, name, department=None, position=None, face_embedding=None):
+        self.id = id
+        self.employee_id = employee_id
+        self.name = name
+        self.department = department
+        self.position = position
+        self.face_embedding = face_embedding
+
+    @staticmethod
+    def from_db_row(row):
+        if row is None:
+            return None
+        return Employee(
+            id=row['id'],
+            employee_id=row['employee_code'],
+            name=row['name'],
+            position=row.get('position'),
+            face_embedding=row.get('face_embeddings')
+        )
+
+    def __repr__(self):
+        return f'<Employee {self.employee_id}: {self.name}>'
 
 def get_db_connection():
     """Tạo kết nối đến SQLite database"""
@@ -10,78 +35,108 @@ def get_db_connection():
     return conn
 
 def init_db():
-    """Khởi tạo database với các bảng cần thiết"""
+    """Khởi tạo database"""
     conn = get_db_connection()
-    cursor = conn.cursor()
     
-    # Bảng Employee - thêm trường position
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS employee (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        employee_code TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        position TEXT,
-        face_encoding BLOB,
-        profile_image TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
+    # Tạo bảng company
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS company (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            settings_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
     ''')
     
-    # Kiểm tra xem cột position đã tồn tại chưa
-    cursor.execute("PRAGMA table_info(employee)")
-    columns = [column[1] for column in cursor.fetchall()]
-    
-    # Nếu chưa có cột position, thêm vào
-    if 'position' not in columns:
-        cursor.execute('ALTER TABLE employee ADD COLUMN position TEXT')
-    
-    # Bảng Attendance
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS attendance (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        employee_id INTEGER NOT NULL,
-        check_in_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        check_out_time TIMESTAMP,
-        work_duration INTEGER,
-        status TEXT DEFAULT 'checked_in',
-        photo_path TEXT,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (employee_id) REFERENCES employee (id)
-    )
+    # Tạo bảng attendance với company_id
+    conn.execute('''
+        DROP TABLE IF EXISTS attendance
     ''')
     
-    # Bảng Complaint
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS complaint (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        employee_id INTEGER NOT NULL,
-        complaint_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        photo TEXT,
-        reason TEXT NOT NULL,
-        details TEXT,
-        requested_time TIMESTAMP,
-        status TEXT DEFAULT 'pending',
-        processed_by INTEGER,
-        processed_time TIMESTAMP,
-        admin_note TEXT,
-        FOREIGN KEY (employee_id) REFERENCES employee (id),
-        FOREIGN KEY (processed_by) REFERENCES employee (id)
-    )
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS attendance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            company_id INTEGER NOT NULL,
+            check_in_time TIMESTAMP,
+            check_out_time TIMESTAMP,
+            status TEXT,
+            photo_path TEXT,
+            confidence_score REAL,
+            device_info TEXT,
+            location TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (company_id) REFERENCES company(id),
+            FOREIGN KEY (employee_id) REFERENCES employee(id)
+        )
     ''')
     
-    # Bảng CheckLog
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS check_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        employee_id INTEGER NOT NULL,
-        check_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        check_type TEXT,
-        photo TEXT,
-        attendance_id INTEGER,
-        FOREIGN KEY (employee_id) REFERENCES employee (id),
-        FOREIGN KEY (attendance_id) REFERENCES attendance (id)
-    )
+    # Tạo bảng employee với company_id
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS employee (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL,
+            employee_code TEXT NOT NULL,
+            name TEXT NOT NULL,
+            department_id INTEGER,
+            position TEXT,
+            face_embeddings BLOB,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (company_id) REFERENCES company(id),
+            FOREIGN KEY (department_id) REFERENCES department(id)
+        )
     ''')
+    
+    # Tạo bảng department
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS department (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_id INTEGER NOT NULL,
+            code TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (company_id) REFERENCES company(id)
+        )
+    ''')
+    
+    # Thêm bảng complaints
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS complaints (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            company_id INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            complaint_time TIMESTAMP NOT NULL,
+            image_data TEXT,
+            status TEXT DEFAULT 'pending',
+            admin_note TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employee(id),
+            FOREIGN KEY (company_id) REFERENCES company(id)
+        )
+    ''')
+    
+    # Thêm công ty mặc định nếu chưa có
+    company = conn.execute('SELECT * FROM company WHERE code = ?', ('DEFAULT',)).fetchone()
+    if not company:
+        conn.execute('''
+            INSERT INTO company (code, name, settings_json)
+            VALUES (?, ?, ?)
+        ''', ('DEFAULT', 'Công ty mặc định', json.dumps({
+            'work_start_time': '08:00',
+            'work_end_time': '17:30',
+            'late_threshold': 15
+        })))
+    
+    # Thêm phòng ban mặc định nếu chưa có
+    department = conn.execute('SELECT * FROM department WHERE code = ?', ('DEFAULT',)).fetchone()
+    if not department:
+        conn.execute('''
+            INSERT INTO department (company_id, code, name, description)
+            VALUES (?, ?, ?, ?)
+        ''', (1, 'DEFAULT', 'Phòng ban mặc định', 'Phòng ban mặc định của công ty'))
     
     conn.commit()
     conn.close()
@@ -90,23 +145,23 @@ def init_db():
 def get_all_employees():
     """Lấy danh sách tất cả nhân viên"""
     conn = get_db_connection()
-    employees = conn.execute('SELECT * FROM employee').fetchall()
+    rows = conn.execute('SELECT * FROM employee').fetchall()
     conn.close()
-    return [dict(e) for e in employees]
+    return [Employee.from_db_row(row) for row in rows]
 
 def get_employee_by_id(employee_id):
     """Lấy thông tin nhân viên theo ID"""
     conn = get_db_connection()
-    employee = conn.execute('SELECT * FROM employee WHERE id = ?', (employee_id,)).fetchone()
+    row = conn.execute('SELECT * FROM employee WHERE id = ?', (employee_id,)).fetchone()
     conn.close()
-    return dict(employee) if employee else None
+    return Employee.from_db_row(row)
 
 def get_employee_by_code(employee_code):
     """Lấy thông tin nhân viên theo mã nhân viên"""
     conn = get_db_connection()
-    employee = conn.execute('SELECT * FROM employee WHERE employee_code = ?', (employee_code,)).fetchone()
+    row = conn.execute('SELECT * FROM employee WHERE employee_code = ?', (employee_code,)).fetchone()
     conn.close()
-    return dict(employee) if employee else None
+    return Employee.from_db_row(row)
 
 def add_employee(employee_data):
     """Thêm nhân viên mới"""

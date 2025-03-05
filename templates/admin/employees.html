@@ -1,0 +1,110 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Quản lý Nhân viên{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-users me-2"></i>Quản lý Nhân viên</h2>
+        <a href="{{ url_for('register') }}" class="btn btn-info">
+            <i class="fas fa-user-plus me-2"></i>Thêm Nhân viên
+        </a>
+    </div>
+
+    <div class="card main-card">
+        <div class="card-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="m-0">Danh sách nhân viên</h5>
+                <div class="input-group" style="width: 300px;">
+                    <input type="text" class="form-control" id="searchEmployee" placeholder="Tìm kiếm...">
+                    <button class="btn btn-info" type="button" id="refreshEmployeeList">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Mã NV</th>
+                            <th>Họ tên</th>
+                            <th>Phòng ban</th>
+                            <th>Ngày tham gia</th>
+                            <th>Trạng thái</th>
+                            <th>Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if employees %}
+                            {% for employee in employees %}
+                            <tr>
+                                <td>{{ employee.employee_code }}</td>
+                                <td>{{ employee.name }}</td>
+                                <td>{{ employee.department }}</td>
+                                <td>{{ employee.created_at.strftime('%d/%m/%Y') if employee.created_at else '' }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if employee.active else 'danger' }}">
+                                        {{ 'Đang làm việc' if employee.active else 'Đã nghỉ' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-info me-1" onclick="editEmployee('{{ employee.id }}')">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteEmployee('{{ employee.id }}')">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center">Chưa có nhân viên nào</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editEmployee(id) {
+    // Implement edit functionality
+    console.log('Edit employee:', id);
+}
+
+function deleteEmployee(id) {
+    Swal.fire({
+        title: 'Xác nhận xóa?',
+        text: "Bạn không thể hoàn tác sau khi xóa!",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Xóa',
+        cancelButtonText: 'Hủy'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Implement delete functionality
+            console.log('Delete employee:', id);
+        }
+    });
+}
+
+document.getElementById('searchEmployee').addEventListener('input', function(e) {
+    // Implement search functionality
+    console.log('Search:', e.target.value);
+});
+
+document.getElementById('refreshEmployeeList').addEventListener('click', function() {
+    // Implement refresh functionality
+    console.log('Refreshing employee list');
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Đăng nhập Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="login-container">
+        <h2>Đăng nhập Admin</h2>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-error">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <form method="POST" action="{{ url_for('admin_login') }}">
+            <div class="form-group">
+                <label>Tên đăng nhập:</label>
+                <input type="text" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label>Mật khẩu:</label>
+                <input type="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="btn btn-primary">Đăng nhập</button>
+        </form>
+    </div>
+</body>
+</html> 

@@ -1,27 +1,101 @@
+// Thêm vào đầu file
+if (typeof $ === 'undefined') {
+    const $ = document.querySelector.bind(document);
+}
+
 // Tạo file mới để xử lý modal
 document.addEventListener('DOMContentLoaded', function() {
     console.log("Đang khởi tạo modal handler...");
     
-    // Xử lý nút quản lý
+    // Xử lý nút mở modal quản lý
     const adminLoginBtn = document.getElementById('adminLoginBtn');
     if (adminLoginBtn) {
         console.log("Đang cài đặt event cho nút quản lý");
-        
-        adminLoginBtn.addEventListener('click', function(e) {
+        adminLoginBtn.addEventListener('click', function() {
             console.log("Đã click vào nút quản lý");
-            
             try {
-                const modalElement = document.getElementById('adminLoginModal');
-                if (modalElement) {
-                    const adminModal = new bootstrap.Modal(modalElement);
-                    adminModal.show();
-                    console.log("Đã mở modal quản lý");
-                } else {
-                    console.error("Không tìm thấy element adminLoginModal");
+                const modal = new bootstrap.Modal(document.getElementById('adminLoginModal'));
+                modal.show();
+                console.log("Đã mở modal quản lý");
+                
+                // Xử lý form đăng nhập
+                const adminLoginForm = document.getElementById('adminLoginForm');
+                if (adminLoginForm) {
+                    adminLoginForm.addEventListener('submit', function(e) {
+                        e.preventDefault();
+                        
+                        const username = document.getElementById('adminUsername').value;
+                        const password = document.getElementById('adminPassword').value;
+                        
+                        // Kiểm tra dữ liệu
+                        if (!username || !password) {
+                            Swal.fire({
+                                icon: 'warning',
+                                title: 'Thiếu thông tin',
+                                text: 'Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu',
+                                confirmButtonColor: '#00ff9d'
+                            });
+                            return;
+                        }
+                        
+                        // Hiển thị loading
+                        Swal.fire({
+                            title: 'Đang đăng nhập...',
+                            allowOutsideClick: false,
+                            didOpen: () => {
+                                Swal.showLoading();
+                            }
+                        });
+                        
+                        // Gửi request đăng nhập
+                        fetch('/admin/login', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                username: username,
+                                password: password
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            console.log("Login response:", data);
+                            
+                            if (data.success) {
+                                // Đóng modal trước khi chuyển hướng
+                                const modalElement = document.getElementById('adminLoginModal');
+                                const modal = bootstrap.Modal.getInstance(modalElement);
+                                if (modal) {
+                                    modal.hide();
+                                }
+                                
+                                // Xóa backdrop và cleanup
+                                const backdrop = document.querySelector('.modal-backdrop');
+                                if (backdrop) backdrop.remove();
+                                document.body.classList.remove('modal-open');
+                                
+                                Swal.fire({
+                                    icon: 'success',
+                                    title: 'Đăng nhập thành công!',
+                                    text: 'Đang chuyển hướng...',
+                                    timer: 1500,
+                                    showConfirmButton: false
+                                }).then(() => {
+                                    window.location.href = '/admin/dashboard';
+                                });
+                            } else {
+                                $('#loginError').text(data.error).show();
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Login error:', error);
+                            $('#loginError').text('Có lỗi xảy ra khi đăng nhập').show();
+                        });
+                    });
                 }
             } catch (error) {
                 console.error("Lỗi khi mở modal quản lý:", error);
-                alert("Không thể mở form đăng nhập. Vui lòng tải lại trang.");
             }
         });
     }
@@ -33,58 +107,30 @@ document.addEventListener('DOMContentLoaded', function() {
         
         complaintBtn.addEventListener('click', function(e) {
             console.log("Đã click vào nút khiếu nại");
+            e.preventDefault();
             
-            try {
-                // Cập nhật thời gian hiện tại
-                const now = new Date();
-                const complaintTime = document.getElementById('complaintTime');
-                if (complaintTime) {
-                    complaintTime.value = now.toLocaleString();
-                }
+            // Cập nhật thời gian hiện tại
+            const now = new Date();
+            const complaintTime = document.getElementById('complaintTime');
+            if (complaintTime) {
+                complaintTime.value = now.toLocaleString();
+            }
+            
+            // Mở modal
+            const modalElement = document.getElementById('complaintModal');
+            if (modalElement) {
+                const complaintModal = new bootstrap.Modal(modalElement);
+                complaintModal.show();
+                console.log("Đã mở modal khiếu nại");
                 
-                // Tự động chụp ảnh
-                captureComplaintPhoto();
-                
-                // Mở modal khiếu nại
-                const modalElement = document.getElementById('complaintModal');
-                if (modalElement) {
-                    const complaintModal = new bootstrap.Modal(modalElement);
-                    complaintModal.show();
-                    console.log("Đã mở modal khiếu nại");
-                } else {
-                    console.error("Không tìm thấy element complaintModal");
-                }
-            } catch (error) {
-                console.error("Lỗi khi mở modal khiếu nại:", error);
+                // Gọi hàm chụp ảnh sau khi modal đã mở
+                setTimeout(captureComplaintPhoto, 500);
+            } else {
+                console.error("Không tìm thấy element complaintModal");
                 alert("Không thể mở form khiếu nại. Vui lòng tải lại trang.");
             }
         });
     }
-    
-    // Cập nhật hàm chụp ảnh cho form khiếu nại để không có bounding box
-    window.captureComplaintPhoto = function() {
-        console.log("Đang chụp ảnh nguyên bản cho khiếu nại...");
-        
-        // Lấy ảnh từ nguồn video mà không xử lý thêm
-        fetch('/capture-raw-frame')
-            .then(response => response.blob())
-            .then(blob => {
-                const url = URL.createObjectURL(blob);
-                const complaintPhoto = document.getElementById('complaintPhoto');
-                if (complaintPhoto) {
-                    complaintPhoto.src = url;
-                    complaintPhoto.dataset.capturedImage = url;
-                }
-                console.log("Đã chụp ảnh nguyên bản thành công");
-            })
-            .catch(e => {
-                console.error("Lỗi khi chụp ảnh nguyên bản:", e);
-                const complaintPhoto = document.getElementById('complaintPhoto');
-                if (complaintPhoto) {
-                    complaintPhoto.src = '/static/images/camera_placeholder.png';
-                }
-            });
-    };
     
     // Thêm event listener cho nút chụp lại
     document.getElementById('retakePhotoBtn')?.addEventListener('click', function(e) {
@@ -212,6 +258,12 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     }
+
+    // Xử lý chụp ảnh khiếu nại
+    const captureBtn = document.getElementById('captureComplaintBtn');
+    if (captureBtn) {
+        captureBtn.addEventListener('click', captureComplaintPhoto);
+    }
 });
 
 // Thêm vào cuối file để sửa lỗi backdrop modal
@@ -240,4 +292,75 @@ document.querySelectorAll('[data-bs-dismiss="modal"]').forEach(button => {
             document.body.style.paddingRight = '';
         }, 300);
     });
-}); 
+});
+
+// Hàm kiểm tra mã nhân viên và điền tên
+function checkEmployeeCode() {
+    const employeeCodeInput = document.getElementById('employeeCode');
+    const employeeNameField = document.getElementById('employeeName');
+    
+    if (!employeeCodeInput || !employeeNameField) return;
+    
+    const employeeCode = employeeCodeInput.value.trim();
+    if (!employeeCode) return;
+    
+    fetch(`/api/employee-info?code=${employeeCode}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.employee) {
+                employeeNameField.value = data.employee.name;
+            } else {
+                employeeNameField.value = '';
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Mã nhân viên không tồn tại',
+                    text: 'Vui lòng kiểm tra lại mã nhân viên'
+                });
+            }
+        })
+        .catch(error => {
+            console.error("Lỗi khi kiểm tra mã nhân viên:", error);
+        });
+}
+
+// Sửa lại hàm captureComplaintPhoto
+window.captureComplaintPhoto = function() {
+    console.log("Đang chụp ảnh nguyên bản cho khiếu nại...");
+    
+    // Hiển thị trạng thái đang tải
+    const imagePreview = document.getElementById('imagePreview');
+    if (imagePreview) {
+        imagePreview.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><div class="mt-2">Đang chụp ảnh...</div></div>';
+        imagePreview.style.display = 'block';
+    }
+    
+    // Lấy ảnh từ server
+    fetch('/capture-complaint-image')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (imagePreview) {
+                    imagePreview.innerHTML = '<img id="capturedImage" class="img-fluid rounded" alt="Ảnh khiếu nại"/>';
+                    const capturedImage = document.getElementById('capturedImage');
+                    if (capturedImage) capturedImage.src = data.image;
+                }
+                
+                // Lưu dữ liệu ảnh vào input ẩn
+                const complaintImage = document.getElementById('complaintImage');
+                if (complaintImage) complaintImage.value = data.image;
+                
+                console.log("Đã chụp ảnh khiếu nại thành công");
+            } else {
+                console.error("Lỗi khi chụp ảnh từ server:", data.error);
+                if (imagePreview) {
+                    imagePreview.innerHTML = '<div class="alert alert-danger">Không thể chụp ảnh. Lỗi: ' + data.error + '</div>';
+                }
+            }
+        })
+        .catch(error => {
+            console.error("Lỗi kết nối khi chụp ảnh:", error);
+            if (imagePreview) {
+                imagePreview.innerHTML = '<div class="alert alert-danger">Lỗi kết nối khi chụp ảnh</div>';
+            }
+        });
+}; 

@@ -1,0 +1,198 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Cài đặt Hệ thống{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="page-title">
+            <i class="fas fa-cog me-2"></i>Cài đặt Hệ thống
+        </h2>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-light" id="resetSettings">
+                <i class="fas fa-undo me-2"></i>Khôi phục mặc định
+            </button>
+            <button class="btn btn-primary" id="saveSettings">
+                <i class="fas fa-save me-2"></i>Lưu thay đổi
+            </button>
+        </div>
+    </div>
+
+    <!-- Settings Form -->
+    <div class="card main-card">
+        <div class="card-body">
+            <form id="settingsForm">
+                <!-- Thông tin công ty -->
+                <div class="mb-4">
+                    <h5 class="card-title">Thông tin công ty</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Tên công ty</label>
+                                <input type="text" class="form-control" name="company_name" 
+                                       value="{{ settings.company_name }}">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Mã công ty</label>
+                                <input type="text" class="form-control" name="company_code" 
+                                       value="{{ settings.company_code }}" readonly>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cài đặt chấm công -->
+                <div class="mb-4">
+                    <h5 class="card-title">Cài đặt chấm công</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Giờ bắt đầu làm việc</label>
+                                <input type="time" class="form-control" name="work_start_time"
+                                       value="{{ settings.work_start_time or '08:00' }}">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Giờ kết thúc làm việc</label>
+                                <input type="time" class="form-control" name="work_end_time"
+                                       value="{{ settings.work_end_time or '17:30' }}">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Thời gian cho phép đi muộn (phút)</label>
+                                <input type="number" class="form-control" name="late_threshold"
+                                       value="{{ settings.late_threshold or 15 }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cài đặt hệ thống -->
+                <div class="mb-4">
+                    <h5 class="card-title">Cài đặt hệ thống</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Ngôn ngữ</label>
+                                <select class="form-select" name="language">
+                                    <option value="vi" {% if settings.language == 'vi' %}selected{% endif %}>Tiếng Việt</option>
+                                    <option value="en" {% if settings.language == 'en' %}selected{% endif %}>English</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Múi giờ</label>
+                                <select class="form-select" name="timezone">
+                                    <option value="Asia/Ho_Chi_Minh" {% if settings.timezone == 'Asia/Ho_Chi_Minh' %}selected{% endif %}>
+                                        (GMT+7) Hồ Chí Minh
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cài đặt thông báo -->
+                <div class="mb-4">
+                    <h5 class="card-title">Cài đặt thông báo</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="email_notifications"
+                                           {% if settings.email_notifications %}checked{% endif %}>
+                                    <label class="form-check-label">Gửi thông báo qua email</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Email nhận thông báo</label>
+                                <input type="email" class="form-control" name="notification_email"
+                                       value="{{ settings.notification_email }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Xử lý lưu cài đặt
+document.getElementById('saveSettings').addEventListener('click', async function() {
+    try {
+        const formData = new FormData(document.getElementById('settingsForm'));
+        const settings = Object.fromEntries(formData);
+        
+        const response = await fetch('/api/v1/admin/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Thành công',
+                text: 'Đã lưu cài đặt'
+            });
+        } else {
+            throw new Error(result.error);
+        }
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Lỗi',
+            text: error.message || 'Không thể lưu cài đặt'
+        });
+    }
+});
+
+// Xử lý khôi phục cài đặt mặc định
+document.getElementById('resetSettings').addEventListener('click', async function() {
+    const confirmed = await Swal.fire({
+        title: 'Xác nhận khôi phục cài đặt mặc định?',
+        text: 'Tất cả các cài đặt sẽ được đặt về giá trị mặc định',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Khôi phục',
+        cancelButtonText: 'Hủy'
+    });
+
+    if (confirmed.isConfirmed) {
+        try {
+            const response = await fetch('/api/v1/admin/reset-settings', {
+                method: 'POST'
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                window.location.reload();
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (error) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Lỗi',
+                text: error.message || 'Không thể khôi phục cài đặt mặc định'
+            });
+        }
+    }
+});
+</script>
+{% endblock %} 

@@ -1,147 +1,451 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Đăng ký nhân viên mới</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body class="dark-theme d-flex flex-column min-vh-100">
-    <nav class="navbar navbar-expand-lg">
-        <div class="container">
-            <h1 class="navbar-brand"><i class="fas fa-fingerprint me-2"></i> Hệ thống chấm công thông minh</h1>
-            <a href="/" class="btn" style="background-color: var(--accent-primary); color: var(--bg-primary);">
-                <i class="fas fa-arrow-left me-2"></i> Quay lại
-            </a>
-        </div>
-    </nav>
+{% extends "admin/base.html" %}
 
-    <div class="container py-5">
-        <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="card main-card">
-                    <div class="card-header">
-                        <h4 class="m-0"><i class="fas fa-user-plus me-2"></i> Đăng ký nhân viên mới</h4>
-                    </div>
-                    <div class="card-body">
-                        <form id="registerForm" enctype="multipart/form-data">
-                            <div class="row mb-4">
-                                <div class="col-md-8">
-                                    <div class="mb-3">
-                                        <label for="name" class="form-label">Họ và tên</label>
-                                        <input type="text" class="form-control" id="name" name="name" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="employee_code" class="form-label">Mã nhân viên</label>
-                                        <input type="text" class="form-control" id="employee_code" name="employee_code" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label for="email" class="form-label">Email</label>
-                                        <input type="email" class="form-control" id="email" name="email" required>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="text-center mb-3">
-                                        <div class="profile-image-preview" id="imagePreview">
-                                            <i class="fas fa-user-circle"></i>
+{% block title %}Đăng ký Nhân viên{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="page-title">
+            <i class="fas fa-user-plus me-2"></i>Đăng ký Nhân viên
+        </h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard') }}">Dashboard</a></li>
+                <li class="breadcrumb-item active">Đăng ký Nhân viên</li>
+            </ol>
+        </nav>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <!-- Form đăng ký -->
+            <div class="card main-card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info-circle me-2"></i>Thông tin Nhân viên
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="registerForm" enctype="multipart/form-data">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Mã nhân viên <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="employee_code" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Họ và tên <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" name="name" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Phòng ban</label>
+                                <select class="form-select" name="department">
+                                    <option value="">Chọn phòng ban</option>
+                                    <option value="IT">IT</option>
+                                    <option value="HR">Nhân sự</option>
+                                    <option value="Finance">Tài chính</option>
+                                    <option value="Sales">Kinh doanh</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Chức vụ</label>
+                                <input type="text" class="form-control" name="position">
+                            </div>
+                        </div>
+
+                        <div class="row mt-4">
+                            <div class="col-md-12">
+                                <h6 class="mb-3"><i class="fas fa-camera me-2"></i>Đăng ký khuôn mặt</h6>
+                                <div class="face-registration-container">
+                                    <div class="video-container mb-3">
+                                        <video id="videoElement" class="registration-video" autoplay playsinline></video>
+                                        <canvas id="canvasElement" class="registration-canvas" style="display: none;"></canvas>
+                                        <div class="face-guide-overlay">
+                                            <div class="face-guide-box"></div>
                                         </div>
-                                        <label for="profile_image" class="btn btn-sm btn-outline-light mt-2">
-                                            <i class="fas fa-upload me-2"></i> Chọn ảnh
-                                        </label>
-                                        <input type="file" class="d-none" id="profile_image" name="profile_image" accept="image/*" required>
+                                    </div>
+                                    <div class="captured-faces mb-3" id="capturedFaces">
+                                        <div class="captured-face-placeholder">
+                                            <i class="fas fa-user-circle"></i>
+                                            <span>Chưa có ảnh</span>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-2 mb-3">
+                                        <button type="button" class="btn btn-primary" id="startCamera">
+                                            <i class="fas fa-video me-2"></i>Bật camera
+                                        </button>
+                                        <button type="button" class="btn btn-success" id="capturePhoto" disabled>
+                                            <i class="fas fa-camera me-2"></i>Chụp ảnh
+                                        </button>
+                                        <button type="button" class="btn btn-danger" id="stopCamera" disabled>
+                                            <i class="fas fa-video-slash me-2"></i>Tắt camera
+                                        </button>
+                                    </div>
+                                    <div class="progress mb-3" style="display: none;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="department" class="form-label">Phòng ban</label>
-                                        <input type="text" class="form-control" id="department" name="department">
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <div class="mb-3">
-                                        <label for="position" class="form-label">Chức vụ</label>
-                                        <input type="text" class="form-control" id="position" name="position">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="mt-4 text-end">
-                                <button type="submit" class="btn btn-lg" style="background-color: var(--accent-primary); color: var(--bg-primary);">
-                                    <i class="fas fa-save me-2"></i> Đăng ký
-                                </button>
-                            </div>
-                        </form>
+                        </div>
+                    </form>
+                </div>
+                <div class="card-footer">
+                    <div class="d-flex justify-content-between">
+                        <button type="button" class="btn btn-outline-light" onclick="history.back()">
+                            <i class="fas fa-arrow-left me-2"></i>Quay lại
+                        </button>
+                        <button type="submit" class="btn btn-primary" form="registerForm">
+                            <i class="fas fa-save me-2"></i>Lưu thông tin
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.0.19/dist/sweetalert2.all.min.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const imageInput = document.getElementById('profile_image');
-            const imagePreview = document.getElementById('imagePreview');
-            const registerForm = document.getElementById('registerForm');
-            
-            // Hiển thị ảnh preview khi chọn file
-            imageInput.addEventListener('change', function() {
-                const file = this.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        imagePreview.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
-                    }
-                    reader.readAsDataURL(file);
-                }
-            });
-            
-            // Xử lý submit form
-            registerForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                
-                const formData = new FormData(registerForm);
-                
-                fetch('/register-employee', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Đăng ký thành công!',
-                            text: data.message,
-                            confirmButtonColor: '#00ff9d'
-                        }).then(() => {
-                            registerForm.reset();
-                            imagePreview.innerHTML = '<i class="fas fa-user-circle"></i>';
-                        });
-                    } else {
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'Lỗi!',
-                            text: data.error,
-                            confirmButtonColor: '#00ff9d'
-                        });
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Lỗi!',
-                        text: 'Có lỗi xảy ra, vui lòng thử lại.',
-                        confirmButtonColor: '#00ff9d'
-                    });
-                });
-            });
+        <div class="col-md-4">
+            <!-- Hướng dẫn -->
+            <div class="card main-card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-question-circle me-2"></i>Hướng dẫn
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="guide-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h6>Nhập thông tin</h6>
+                            <p>Điền đầy đủ các thông tin cơ bản của nhân viên</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h6>Chụp ảnh khuôn mặt</h6>
+                            <p>Bật camera và chụp ít nhất 3 ảnh khuôn mặt rõ nét</p>
+                        </div>
+                    </div>
+                    <div class="guide-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h6>Lưu thông tin</h6>
+                            <p>Kiểm tra lại và nhấn nút Lưu thông tin để hoàn tất</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thông tin thêm -->
+            <div class="card main-card mt-4">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-lightbulb me-2"></i>Lưu ý
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <ul class="note-list">
+                        <li>Đảm bảo ánh sáng đầy đủ khi chụp ảnh</li>
+                        <li>Khuôn mặt cần nhìn thẳng vào camera</li>
+                        <li>Không đeo kính hoặc khẩu trang khi chụp</li>
+                        <li>Nên chụp ở các góc độ khác nhau</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+/* Face Registration Styles */
+.face-registration-container {
+    background: var(--bg-tertiary);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+}
+
+.video-container {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    margin: 0 auto;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.registration-video {
+    width: 100%;
+    border-radius: var(--border-radius);
+    transform: scaleX(-1);
+}
+
+.face-guide-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.face-guide-box {
+    width: 300px;
+    height: 300px;
+    border: 2px solid var(--accent-primary);
+    border-radius: 50%;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+}
+
+.captured-faces {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding: 1rem 0;
+}
+
+.captured-face-placeholder {
+    width: 120px;
+    height: 120px;
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+}
+
+.captured-face-placeholder i {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+}
+
+.captured-face {
+    width: 120px;
+    height: 120px;
+    border-radius: var(--border-radius);
+    object-fit: cover;
+}
+
+/* Guide Steps */
+.guide-step {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+}
+
+.step-number {
+    width: 30px;
+    height: 30px;
+    background: var(--accent-primary);
+    color: var(--bg-primary);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-right: 1rem;
+    flex-shrink: 0;
+}
+
+.step-content h6 {
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.step-content p {
+    margin-bottom: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* Note List */
+.note-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.note-list li {
+    position: relative;
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.note-list li:before {
+    content: '\f0eb';
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    position: absolute;
+    left: 0;
+    color: var(--warning);
+}
+
+/* Progress Bar */
+.progress {
+    background-color: var(--bg-secondary);
+    height: 0.5rem;
+    border-radius: var(--border-radius);
+}
+
+.progress-bar {
+    background-color: var(--accent-primary);
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Face Registration Logic
+let stream = null;
+let capturedPhotos = [];
+
+// Khởi tạo các elements
+const videoElement = document.getElementById('videoElement');
+const canvasElement = document.getElementById('canvasElement');
+const capturedFaces = document.getElementById('capturedFaces');
+const startButton = document.getElementById('startCamera');
+const captureButton = document.getElementById('capturePhoto');
+const stopButton = document.getElementById('stopCamera');
+const registerForm = document.getElementById('registerForm');
+
+// Xử lý bật camera
+startButton.addEventListener('click', async () => {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { 
+                width: 640,
+                height: 480,
+                facingMode: 'user'
+            } 
         });
-    </script>
-</body>
-</html> 
+        videoElement.srcObject = stream;
+        startButton.disabled = true;
+        captureButton.disabled = false;
+        stopButton.disabled = false;
+    } catch (err) {
+        console.error('Error accessing camera:', err);
+        Swal.fire({
+            icon: 'error',
+            title: 'Lỗi Camera',
+            text: 'Không thể truy cập camera. Vui lòng kiểm tra quyền truy cập.'
+        });
+    }
+});
+
+// Xử lý tắt camera
+stopButton.addEventListener('click', () => {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        videoElement.srcObject = null;
+        startButton.disabled = false;
+        captureButton.disabled = true;
+        stopButton.disabled = true;
+    }
+});
+
+// Xử lý chụp ảnh
+captureButton.addEventListener('click', () => {
+    if (capturedPhotos.length >= 5) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Đã đủ ảnh',
+            text: 'Bạn đã chụp đủ 5 ảnh. Có thể xóa ảnh cũ để chụp lại.'
+        });
+        return;
+    }
+
+    const context = canvasElement.getContext('2d');
+    canvasElement.width = videoElement.videoWidth;
+    canvasElement.height = videoElement.videoHeight;
+    context.translate(canvasElement.width, 0);
+    context.scale(-1, 1);
+    context.drawImage(videoElement, 0, 0);
+
+    const photoData = canvasElement.toDataURL('image/jpeg');
+    capturedPhotos.push(photoData);
+    updateCapturedFaces();
+});
+
+// Cập nhật hiển thị ảnh đã chụp
+function updateCapturedFaces() {
+    if (capturedPhotos.length === 0) {
+        capturedFaces.innerHTML = `
+            <div class="captured-face-placeholder">
+                <i class="fas fa-user-circle"></i>
+                <span>Chưa có ảnh</span>
+            </div>
+        `;
+        return;
+    }
+
+    capturedFaces.innerHTML = capturedPhotos.map((photo, index) => `
+        <div class="position-relative">
+            <img src="${photo}" class="captured-face" alt="Face ${index + 1}">
+            <button type="button" class="btn btn-danger btn-sm position-absolute top-0 end-0 m-1"
+                    onclick="deletePhoto(${index})">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// Xóa ảnh đã chụp
+function deletePhoto(index) {
+    capturedPhotos.splice(index, 1);
+    updateCapturedFaces();
+}
+
+// Xử lý submit form
+registerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    if (capturedPhotos.length < 3) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Thiếu ảnh',
+            text: 'Vui lòng chụp ít nhất 3 ảnh khuôn mặt'
+        });
+        return;
+    }
+
+    const formData = new FormData(registerForm);
+    capturedPhotos.forEach((photo, index) => {
+        formData.append(`photo_${index}`, photo);
+    });
+
+    try {
+        const response = await fetch('/register', {
+            method: 'POST',
+            body: formData
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            Swal.fire({
+                icon: 'success',
+                title: 'Đăng ký thành công',
+                text: 'Nhân viên đã được thêm vào hệ thống',
+                confirmButtonText: 'OK'
+            }).then(() => {
+                window.location.href = '/admin/employees';
+            });
+        } else {
+            throw new Error(result.error || 'Có lỗi xảy ra');
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Lỗi',
+            text: error.message || 'Không thể đăng ký nhân viên'
+        });
+    }
+});
+</script>
+{% endblock %} 

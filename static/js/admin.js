@@ -22,6 +22,216 @@ document.addEventListener('DOMContentLoaded', function() {
     const approveBtn = document.getElementById('approveBtn');
     const rejectBtn = document.getElementById('rejectBtn');
 
+    // Toggle sidebar
+    const sidebarCollapse = document.getElementById('sidebarCollapse');
+    const sidebar = document.getElementById('sidebar');
+    const content = document.getElementById('content');
+
+    if (sidebarCollapse) {
+        sidebarCollapse.addEventListener('click', function() {
+            sidebar.classList.toggle('active');
+            content.classList.toggle('active');
+        });
+    }
+
+    // Auto update time
+    const timeElement = document.querySelector('.time');
+    const dateElement = document.querySelector('.date');
+    
+    function updateTime() {
+        const now = new Date();
+        timeElement.textContent = now.toLocaleTimeString('vi-VN');
+        dateElement.textContent = now.toLocaleDateString('vi-VN');
+    }
+    
+    setInterval(updateTime, 1000);
+    updateTime();
+    
+    // Close sidebar on mobile when clicking outside
+    document.addEventListener('click', function(e) {
+        if (window.innerWidth <= 768) {
+            if (!sidebar.contains(e.target) && !sidebarCollapse.contains(e.target)) {
+                sidebar.classList.add('active');
+                content.classList.add('active');
+            }
+        }
+    });
+
+    // Chỉ chạy cập nhật dashboard nếu đang ở trang dashboard
+    if (window.location.pathname === '/admin/dashboard') {
+        // Cập nhật lần đầu
+        updateDashboardStats();
+        // Sau đó cập nhật mỗi 30 giây
+        setInterval(updateDashboardStats, 30000);
+    }
+
+    // Realtime Dashboard Updates
+    function updateDashboardStats() {
+        fetch('/api/v1/admin/dashboard-stats', {
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Cập nhật số liệu thống kê
+            const totalEmployees = document.getElementById('totalEmployees');
+            const todayAttendance = document.getElementById('todayAttendance');
+            const lateToday = document.getElementById('lateToday');
+            const activeEmployees = document.getElementById('activeEmployees');
+
+            if (totalEmployees) totalEmployees.textContent = data.total_employees;
+            if (todayAttendance) todayAttendance.textContent = data.today_attendance;
+            if (lateToday) lateToday.textContent = data.late_today;
+
+            // Cập nhật bảng nhân viên đang làm việc
+            if (activeEmployees) {
+                if (data.active_employees && data.active_employees.length > 0) {
+                    activeEmployees.innerHTML = data.active_employees.map(emp => `
+                        <tr>
+                            <td>${emp.employee_code || ''}</td>
+                            <td>${emp.name || ''}</td>
+                            <td>${emp.department || ''}</td>
+                            <td>${formatDateTime(emp.check_in_time)}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    activeEmployees.innerHTML = `
+                        <tr>
+                            <td colspan="4" class="text-center">Chưa có nhân viên nào chấm công hôm nay</td>
+                        </tr>
+                    `;
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error updating dashboard:', error);
+        });
+    }
+
+    function updateActiveEmployeesList(employees) {
+        const container = document.getElementById('activeEmployeesList');
+        if (!container) return;
+
+        container.innerHTML = employees.map(emp => `
+            <div class="active-employee-card">
+                <div class="employee-avatar">
+                    <img src="${emp.profile_image || '/static/img/default-avatar.png'}" alt="${emp.name}">
+                    <span class="status-dot ${emp.status === 'checked_in' ? 'active' : ''}"></span>
+                </div>
+                <div class="employee-info">
+                    <h5>${emp.name}</h5>
+                    <p class="text-muted">${emp.employee_code}</p>
+                    <small>Check-in: ${new Date(emp.check_in_time).toLocaleTimeString()}</small>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Chart.js Integration for Reports
+    function initializeCharts() {
+        const attendanceChart = document.getElementById('attendanceChart');
+        if (attendanceChart) {
+            new Chart(attendanceChart, {
+                type: 'line',
+                data: {
+                    labels: [], // Will be filled with dates
+                    datasets: [{
+                        label: 'Tổng số chấm công',
+                        data: [],
+                        borderColor: '#3498db',
+                        tension: 0.1
+                    }, {
+                        label: 'Đi muộn',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Employee Registration Form Handler
+    const employeeForm = document.getElementById('employeeRegistrationForm');
+    if (employeeForm) {
+        employeeForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const submitButton = this.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            
+            try {
+                const response = await fetch('/api/v1/admin/employees', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showNotification('success', 'Đăng ký nhân viên thành công!');
+                    this.reset();
+                } else {
+                    showNotification('error', result.error);
+                }
+            } catch (error) {
+                showNotification('error', 'Có lỗi xảy ra khi đăng ký nhân viên');
+            } finally {
+                submitButton.disabled = false;
+            }
+        });
+    }
+
+    // Custom Notification System
+    function showNotification(type, message) {
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.innerHTML = `
+            <div class="notification-content">
+                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                <span>${message}</span>
+            </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 100);
+        
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
+
+    // Export Reports
+    function exportReport(format) {
+        const filters = {
+            startDate: document.getElementById('reportStartDate').value,
+            endDate: document.getElementById('reportEndDate').value,
+            employeeId: document.getElementById('employeeFilter').value
+        };
+        
+        const queryString = new URLSearchParams(filters).toString();
+        window.location.href = `/api/v1/admin/export-report?format=${format}&${queryString}`;
+    }
+
     // Hàm tải tổng quan dashboard
     function loadDashboard() {
         // 1. Tải số liệu thống kê
@@ -534,6 +744,11 @@ document.addEventListener('DOMContentLoaded', function() {
             processComplaint(complaintId, 'rejected');
         });
     }
+
+    // Initialize components
+    if (document.querySelector('.admin-panel')) {
+        initializeCharts();
+    }
 });
 
 // Xử lý event cho tab navigation với Bootstrap
@@ -549,4 +764,14 @@ window.addEventListener('DOMContentLoaded', (event) => {
             document.querySelector(targetId).classList.add('show', 'active');
         });
     });
-}); 
+});
+
+// Hàm format thời gian
+function formatDateTime(dateString) {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+} 

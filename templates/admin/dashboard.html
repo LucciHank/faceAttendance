@@ -1,0 +1,238 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="page-title">
+            <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+        </h2>
+        <div class="date-filter d-flex align-items-center">
+            <select class="form-select me-2" id="timeRange">
+                <option value="today">Hôm nay</option>
+                <option value="week">Tuần này</option>
+                <option value="month">Tháng này</option>
+            </select>
+            <button class="btn btn-primary" id="refreshStats">
+                <i class="fas fa-sync-alt me-1"></i>Làm mới
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stats-value" id="totalEmployees">0</div>
+                <div class="stats-label">Tổng số nhân viên</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-icon">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stats-value" id="todayAttendance">0</div>
+                <div class="stats-label">Đã chấm công hôm nay</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="stats-value" id="lateToday">0</div>
+                <div class="stats-label">Đi muộn</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-icon">
+                    <i class="fas fa-times-circle"></i>
+                </div>
+                <div class="stats-value" id="absentToday">0</div>
+                <div class="stats-label">Vắng mặt</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-8">
+            <div class="chart-container">
+                <h5>Thống kê chấm công theo thời gian</h5>
+                <canvas id="attendanceChart"></canvas>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="chart-container">
+                <h5>Tỷ lệ chấm công</h5>
+                <canvas id="attendanceRatioChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Hoạt động gần đây</h5>
+            <button class="btn btn-sm btn-outline-light" id="refreshActivity">
+                <i class="fas fa-sync-alt"></i>
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Thời gian</th>
+                            <th>Mã NV</th>
+                            <th>Tên nhân viên</th>
+                            <th>Phòng ban</th>
+                            <th>Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recentActivity">
+                        <!-- Data will be loaded dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Destroy existing charts before creating new ones
+let attendanceChart = null;
+let attendanceRatioChart = null;
+
+function initCharts() {
+    // Destroy existing charts
+    if (attendanceChart) {
+        attendanceChart.destroy();
+    }
+    if (attendanceRatioChart) {
+        attendanceRatioChart.destroy();
+    }
+
+    // Attendance Chart
+    const ctx1 = document.getElementById('attendanceChart').getContext('2d');
+    attendanceChart = new Chart(ctx1, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Đúng giờ',
+                data: [],
+                borderColor: '#00ffb3',
+                tension: 0.4
+            }, {
+                label: 'Đi muộn',
+                data: [],
+                borderColor: '#ff2366',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        color: '#fff'
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(255,255,255,0.1)'
+                    },
+                    ticks: {
+                        color: '#fff'
+                    }
+                },
+                x: {
+                    grid: {
+                        color: 'rgba(255,255,255,0.1)'
+                    },
+                    ticks: {
+                        color: '#fff'
+                    }
+                }
+            }
+        }
+    });
+
+    // Attendance Ratio Chart
+    const ctx2 = document.getElementById('attendanceRatioChart').getContext('2d');
+    attendanceRatioChart = new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+            labels: ['Đúng giờ', 'Đi muộn', 'Vắng mặt'],
+            datasets: [{
+                data: [0, 0, 0],
+                backgroundColor: ['#00ffb3', '#ff2366', '#ffb300']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        color: '#fff'
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Update charts with data
+function updateCharts(data) {
+    // Update line chart
+    attendanceChart.data.labels = data.dates;
+    attendanceChart.data.datasets[0].data = data.onTime;
+    attendanceChart.data.datasets[1].data = data.late;
+    attendanceChart.update();
+
+    // Update doughnut chart
+    attendanceRatioChart.data.datasets[0].data = [
+        data.totalOnTime,
+        data.totalLate,
+        data.totalAbsent
+    ];
+    attendanceRatioChart.update();
+}
+
+// Initialize charts when document is ready
+document.addEventListener('DOMContentLoaded', function() {
+    initCharts();
+    loadDashboardData();
+});
+
+// Load dashboard data
+function loadDashboardData() {
+    fetch('/api/v1/admin/dashboard-stats')
+        .then(response => response.json())
+        .then(data => {
+            updateCharts(data);
+            updateStats(data);
+            updateRecentActivity(data.recentActivity);
+        })
+        .catch(error => console.error('Error loading dashboard data:', error));
+}
+</script>
+{% endblock %} 

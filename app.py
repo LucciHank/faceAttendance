@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template, jsonify, request, url_for, send_file, redirect, session
+from flask import Flask, Response, render_template, jsonify, request, url_for, send_file, redirect, session, flash
 import cv2
 import time
 import threading
@@ -11,15 +11,20 @@ from datetime import datetime, timedelta
 import sqlite3
 import uuid
 import base64
-import models  # Import models mới
+import models
 from werkzeug.utils import secure_filename
-import hashlib
+from face_processing import extract_and_align_face, extract_embedding, identify_employee, draw_face_box, process_registration_video
+import io
+import json
+from functools import wraps
+from werkzeug.security import check_password_hash, generate_password_hash
 
 # Tắt các warning không cần thiết
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
+app.config['SECRET_KEY'] = 'your_secret_key_here'  # Thêm secret key vào config
 
 # Đảm bảo thư mục uploads tồn tại
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -31,6 +36,7 @@ models.init_db()
 camera = None
 camera_lock = threading.Lock()
 camera_running = False
+camera_initialized = False
 
 # Khởi tạo MediaPipe Face Detection
 mp_face_detection = mp.solutions.face_detection
@@ -48,42 +54,78 @@ detected_employee = None
 last_detection_time = 0
 detection_status = "Chưa phát hiện"
 
-# Thêm secret key cho Flask session
-app.secret_key = "your_secret_key_here"
-
 # Credentials
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin123" # Trong thực tế, nên lưu mã hash
 
-def init_camera():
-    """Khởi tạo và kiểm tra camera"""
-    global camera
-    try:
-        if camera is None:
-            print("Đang kết nối camera...")
-            camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-            camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            
-            if not camera.isOpened():
-                print("Không thể kết nối camera!")
-                return False
-                
-            ret, frame = camera.read()
-            if not ret:
-                print("Không thể đọc frame từ camera!")
-                camera.release()
-                camera = None
-                return False
-                
+# Biến global để theo dõi khởi tạo camera
+_camera_init_thread = None
+_camera_ready = False
+
+def get_db_connection():
+    """Tạo kết nối database"""
+    return models.get_db_connection()
+
+def wait_for_camera(timeout=5):
+    """Đợi cho đến khi camera sẵn sàng với timeout"""
+    global camera, camera_initialized
+    
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if camera is not None and camera.isOpened():
             return True
-        return True
+        time.sleep(0.1)
+    
+    # Nếu camera chưa được khởi tạo, thử khởi tạo
+    if camera is None or not camera.isOpened():
+        return init_camera()
+    
+    return False
+
+def init_camera():
+    """Khởi tạo camera"""
+    global camera, camera_initialized
+    
+    # Giải phóng camera cũ nếu có
+    if camera is not None:
+        camera.release()
+    
+    try:
+        print("Đang khởi tạo camera...")
+        # Liệt kê tất cả camera có sẵn
+        available_cameras = []
+        for i in range(3):  # Thử tối đa 3 camera
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                available_cameras.append(i)
+                cap.release()
+        
+        print(f"Các camera có sẵn: {available_cameras}")
+        
+        # Thử kết nối từng camera
+        for cam_id in available_cameras:
+            print(f"Thử kết nối với camera {cam_id}...")
+            camera = cv2.VideoCapture(cam_id)
+            
+            if camera.isOpened():
+                # Đọc thử một frame để đảm bảo camera hoạt động tốt
+                ret, frame = camera.read()
+                if ret and frame is not None:
+                    print(f"Đã kết nối thành công với camera {cam_id}")
+                    camera_initialized = True
+                    return True
+                else:
+                    print(f"Camera {cam_id} không đọc được frame")
+                    camera.release()
+        
+        print("Không thể kết nối với bất kỳ camera nào!")
+        return False
+        
     except Exception as e:
-        print(f"Lỗi khi khởi tạo camera: {str(e)}")
-        if camera is not None:
+        print(f"Lỗi khởi tạo camera: {str(e)}")
+        if camera and camera.isOpened():
             camera.release()
-            camera = None
+        camera = None
         return False
 
 def create_error_frame(message):
@@ -94,49 +136,44 @@ def create_error_frame(message):
     return buffer.tobytes()
 
 def process_frame(frame):
-    """Xử lý frame với MediaPipe Face Detection"""
-    global current_confidence, face_detected, detected_employee, last_detection_time, detection_status
+    """Xử lý frame từ camera"""
+    global current_confidence, face_detected, detected_employee, face_encoding, last_detection_time, detection_status
     
-    # Đảm bảo frame đúng định dạng
-    if frame is None or not isinstance(frame, np.ndarray):
-        error_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        cv2.putText(error_frame, "Lỗi camera", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        return error_frame
-        
     try:
-        # Chuyển frame sang RGB
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Deep copy để tránh sửa đổi frame gốc
+        processed_frame = frame.copy()
         
-        # Phát hiện khuôn mặt bằng MediaPipe
-        results = face_detection.process(rgb_frame)
+        # Phát hiện khuôn mặt với MediaPipe
+        frame_rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
+        results = face_detection.process(frame_rgb)
         
         if results.detections:
-            face_detected = True
-            detection = results.detections[0]  # Lấy khuôn mặt đầu tiên
-            current_confidence = detection.score[0]
-            last_detection_time = time.time()
-            
-            # Vẽ khuôn mặt
-            bbox = detection.location_data.relative_bounding_box
-            h, w, _ = frame.shape
-            x = int(bbox.xmin * w)
-            y = int(bbox.ymin * h)
-            width = int(bbox.width * w)
-            height = int(bbox.height * h)
-            
-            # Vẽ bounding box
-            cv2.rectangle(frame, (x, y), (x + width, y + height), (0, 255, 0), 2)
-            
-            return frame
-        else:
-            face_detected = False
-            current_confidence = 0.0
-            detection_status = "Chưa phát hiện khuôn mặt"
-            return frame
+            for detection in results.detections:
+                # Lấy tọa độ khuôn mặt
+                bbox = detection.location_data.relative_bounding_box
+                h, w, _ = processed_frame.shape
+                x = int(bbox.xmin * w)
+                y = int(bbox.ymin * h)
+                width = int(bbox.width * w)
+                height = int(bbox.height * h)
                 
+                # Vẽ bounding box với độ dày 2
+                cv2.rectangle(processed_frame, (x, y), (x + width, y + height), (0, 255, 0), 2)
+                
+                # Hiển thị text "Đang nhận diện..." phía trên bounding box
+                label = "Đang nhận diện..."
+                cv2.putText(processed_frame, label, (x, y - 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        
+        # Thêm dòng chữ "Camera đang hoạt động" góc trên bên trái
+        cv2.putText(processed_frame, "Camera đang hoạt động", (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        
+        return processed_frame
+        
     except Exception as e:
-        print(f"Lỗi khi xử lý frame: {str(e)}")
-        # Trả về frame gốc nếu có lỗi xử lý
+        print(f"Lỗi xử lý frame: {str(e)}")
+        # Trả về frame gốc nếu có lỗi
         return frame
 
 @app.route('/')
@@ -146,60 +183,67 @@ def index():
 
 @app.route('/video_feed')
 def video_feed():
-    """Stream video từ camera với face detection"""
-    def generate_frames():
-        global camera_running
-        camera_running = True
-        
-        if not init_camera():
-            # Trả về một loạt frames báo lỗi
-            error_frame = create_error_frame("Không thể kết nối camera")
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + error_frame + b'\r\n')
-            return
-        
-        while camera_running:
-            try:
-                # Đọc frame từ camera
-                with camera_lock:
-                    if camera is None or not camera.isOpened():
-                        break
-                    ret, frame = camera.read()
-                
-                if not ret or frame is None:
-                    print("Lỗi khi đọc frame từ camera")
-                    # Tạo frame lỗi
-                    error_frame = create_error_frame("Lỗi đọc dữ liệu từ camera")
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + error_frame + b'\r\n')
-                    time.sleep(0.5)
-                    continue
-                
-                # Xử lý frame để phát hiện khuôn mặt
-                processed_frame = process_frame(frame)
-                
-                # Tạo stream video
-                try:
-                    ret, buffer = cv2.imencode('.jpg', processed_frame)
-                    if not ret:
-                        continue
-                    
-                    frame_bytes = buffer.tobytes()
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-                except Exception as e:
-                    print(f"Lỗi khi tạo frame: {str(e)}")
-                    continue
-                
-                time.sleep(0.01)  # 60 FPS
-            except Exception as e:
-                print(f"Lỗi trong generate_frames: {str(e)}")
-                error_frame = create_error_frame(f"Lỗi: {str(e)}")
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + error_frame + b'\r\n')
-                time.sleep(1)
+    """Video streaming route"""
+    return Response(generate_frames(),
+                   mimetype='multipart/x-mixed-replace; boundary=frame')
+
+def generate_frames():
+    """Generator để tạo frame liên tục cho video stream"""
+    global camera, camera_running
     
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    # Đợi camera khởi tạo xong với timeout 2 giây
+    if not wait_for_camera(2):
+        # Hiển thị frame thông báo "Đang kết nối camera..."
+        error_frame = np.zeros((360, 480, 3), dtype=np.uint8)
+        cv2.putText(error_frame, "Đang kết nối camera...", (50, 180), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        ret, buffer = cv2.imencode('.jpg', error_frame)
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+    
+    # Khởi tạo camera nếu chưa sẵn sàng
+    if not camera_initialized:
+        # Hiển thị thông báo lỗi
+        error_frame = np.zeros((360, 480, 3), dtype=np.uint8)
+        cv2.putText(error_frame, "Không thể kết nối camera!", (50, 180), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            
+        ret, buffer = cv2.imencode('.jpg', error_frame)
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        return
+    
+    camera_running = True
+    
+    try:
+        while camera_running:
+            # Đọc frame từ camera
+            success, frame = camera.read()
+            if not success:
+                # Hiển thị thông báo lỗi và thử lại sau 0.1 giây
+                print("Không thể đọc frame từ camera")
+                time.sleep(0.1)
+                continue
+            
+            # Xử lý frame với phát hiện khuôn mặt
+            processed_frame = process_frame(frame)
+            
+            # Chuyển frame thành JPEG
+            ret, buffer = cv2.imencode('.jpg', processed_frame)
+            frame_bytes = buffer.tobytes()
+            
+            # Trả về frame
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            
+            # Giảm tải CPU
+            time.sleep(0.03)
+            
+    except Exception as e:
+        print(f"Lỗi stream video: {str(e)}")
+    finally:
+        camera_running = False
 
 @app.route('/status')
 def status():
@@ -276,44 +320,70 @@ def text_to_speech():
         print(f"Lỗi TTS: {str(e)}")
         return Response(f"Lỗi: {str(e)}", status=500)
 
-@app.route('/register', methods=['POST'])
+@app.route('/register', methods=['GET', 'POST'])
 def register():
-    """API endpoint để đăng ký nhân viên mới"""
+    if request.method == 'POST':
+        try:
+            # Lấy dữ liệu từ form
+            employee_code = request.form.get('employee_code')
+            name = request.form.get('name')
+            department_id = request.form.get('department')
+            position = request.form.get('position')
+            video_data = request.form.get('video_data')
+            
+            if not all([employee_code, name, video_data]):
+                return jsonify({
+                    'success': False,
+                    'error': 'Vui lòng điền đầy đủ thông tin'
+                })
+            
+            # Xử lý video và trích xuất khuôn mặt
+            face_embeddings = process_registration_video(video_data)
+            if not face_embeddings:
+                return jsonify({
+                    'success': False,
+                    'error': 'Không thể trích xuất khuôn mặt từ video'
+                })
+            
+            # Lưu vào database
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                INSERT INTO employee (
+                    company_id, employee_code, name, 
+                    department_id, position, face_embeddings
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                session.get('admin_company_id', 1),
+                employee_code, name, department_id,
+                position, face_embeddings
+            ))
+            
+            conn.commit()
+            conn.close()
+            
+            return jsonify({'success': True})
+            
+        except Exception as e:
+            print(f"Registration error: {str(e)}")
+            return jsonify({'success': False, 'error': str(e)})
+            
+    # GET request
+    departments = []
     try:
-        employee_code = request.form.get('employee_code')
-        name = request.form.get('name')
-        position = request.form.get('position', '')  # Thêm trường vị trí
-
-        # Kiểm tra tính hợp lệ của dữ liệu
-        if not employee_code or not name:
-            return jsonify({'success': False, 'error': 'Vui lòng nhập đầy đủ thông tin'}), 400
-        
-        # Upload ảnh
-        profile_image = None
-        if 'profile_image' in request.files:
-            file = request.files['profile_image']
-            if file and file.filename:
-                filename = secure_filename(f"{uuid.uuid4()}_{file.filename}")
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(filepath)
-                profile_image = os.path.join('uploads', filename)
-        
-        # Thêm nhân viên mới
-        employee_id = models.add_employee({
-            'employee_code': employee_code,
-            'name': name,
-            'position': position,
-            'profile_image': profile_image
-        })
-        
-        return jsonify({
-            'success': True, 
-            'message': f'Đã đăng ký nhân viên {name} thành công',
-            'employee_id': employee_id
-        })
+        conn = get_db_connection()
+        departments = conn.execute("""
+            SELECT * FROM department 
+            WHERE company_id = ?
+        """, (session.get('admin_company_id', 1),)).fetchall()
     except Exception as e:
-        print(f"Lỗi khi đăng ký nhân viên: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
+        print(f"Error loading departments: {str(e)}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
+            
+    return render_template('register.html', departments=departments)
 
 @app.route('/active-employees')
 def get_active_employees():
@@ -446,29 +516,209 @@ def submit_complaint():
 @app.route('/admin')
 def admin_panel():
     """Trang quản trị"""
-    if not session.get('admin_logged_in'):
-        return redirect('/')
-    return render_template('admin.html')
+    if not session.get('admin_logged_in') and not session.get('admin_company_id'):
+        return redirect(url_for('admin_login'))
+    return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/attendance')
 def admin_attendance():
     """Trang quản lý lịch sử chấm công"""
-    return render_template('admin_attendance.html')
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    return render_template('admin/attendance.html')
+
+@app.route('/admin/employees_page')
+def admin_employees_page():
+    """Trang quản lý nhân viên"""
+    return render_template('admin_employees.html')
 
 @app.route('/admin/employees')
 def admin_employees():
     """Trang quản lý nhân viên"""
-    return render_template('admin_employees.html')
-
-@app.route('/admin/employees-list')
-def get_employees_list():
-    """API endpoint lấy danh sách tất cả nhân viên"""
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+        
     try:
-        employees = models.get_all_employees()
-        return jsonify(employees)
+        conn = get_db_connection()
+        employees = conn.execute("""
+            SELECT e.*, d.name as department_name 
+            FROM employee e
+            LEFT JOIN department d ON e.department_id = d.id
+            WHERE e.company_id = ?
+            ORDER BY e.created_at DESC
+        """, (session['admin_company_id'],)).fetchall()
+        
+        # Convert string dates to datetime objects
+        for employee in employees:
+            if employee['created_at']:
+                employee['created_at'] = datetime.fromisoformat(employee['created_at'])
+                
+        return render_template('admin/employees.html', employees=employees)
+        
     except Exception as e:
-        print(f"Lỗi khi lấy danh sách nhân viên: {str(e)}")
+        print(f"Employees error: {str(e)}")
+        flash('Không thể tải danh sách nhân viên', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+
+
+@app.route('/admin/login', methods=['POST'])
+def admin_login():
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        print(f"Login attempt - Username: {username}")
+        
+        # Kiểm tra tài khoản admin mặc định
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            conn = get_db_connection()
+            company = conn.execute("""
+                SELECT id, name, settings_json 
+                FROM company 
+                WHERE code = ?
+            """, ('DEFAULT',)).fetchone()
+            
+            if company:
+                session['admin_logged_in'] = True
+                session['admin_company_id'] = company['id']
+                session['company_code'] = 'DEFAULT'
+                session['company_name'] = company['name']
+                
+                if company['settings_json']:
+                    settings = json.loads(company['settings_json'])
+                    session['company_settings'] = settings
+                    
+                return jsonify({'success': True})
+                
+        return jsonify({
+            'success': False, 
+            'error': 'Tên đăng nhập hoặc mật khẩu không đúng'
+        })
+            
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/v1/admin/dashboard-stats')
+def get_dashboard_stats():
+    """API endpoint để lấy thống kê cho dashboard"""
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    try:
+        conn = get_db_connection()
+        
+        # Kiểm tra cấu trúc bảng
+        has_company_id = False
+        table_info = conn.execute("PRAGMA table_info(employee)").fetchall()
+        for column in table_info:
+            if column[1] == 'company_id':
+                has_company_id = True
+                break
+        
+        # Truy vấn dựa trên cấu trúc bảng thực tế
+        if has_company_id:
+            # Nếu có company_id
+            stats = conn.execute("""
+                SELECT 
+                    COUNT(*) as total_employees,
+                    COUNT(CASE WHEN a.status = 'on_time' AND DATE(a.check_in_time) = DATE('now') THEN 1 END) as on_time_today,
+                    COUNT(CASE WHEN a.status = 'late' AND DATE(a.check_in_time) = DATE('now') THEN 1 END) as late_today,
+                    COUNT(DISTINCT e.id) - COUNT(DISTINCT CASE WHEN DATE(a.check_in_time) = DATE('now') THEN e.id END) as absent_today
+                FROM employee e
+                LEFT JOIN attendance a ON e.id = a.employee_id
+                WHERE e.company_id = ?
+            """, (session.get('admin_company_id', 1),)).fetchone()
+        else:
+            # Nếu không có company_id
+            stats = conn.execute("""
+                SELECT 
+                    COUNT(*) as total_employees,
+                    COUNT(CASE WHEN a.status = 'on_time' AND DATE(a.check_in_time) = DATE('now') THEN 1 END) as on_time_today,
+                    COUNT(CASE WHEN a.status = 'late' AND DATE(a.check_in_time) = DATE('now') THEN 1 END) as late_today,
+                    COUNT(DISTINCT e.id) - COUNT(DISTINCT CASE WHEN DATE(a.check_in_time) = DATE('now') THEN e.id END) as absent_today
+                FROM employee e
+                LEFT JOIN attendance a ON e.id = a.employee_id
+            """).fetchone()
+        
+        return jsonify({
+            'stats': dict(stats),
+            'weekly_stats': [] # Thêm dữ liệu weekly nếu cần
+        })
+        
+    except Exception as e:
+        print(f"Dashboard stats error: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.context_processor
+def utility_processor():
+    """Add utility functions/variables to template context"""
+    return {
+        'now': datetime.now()
+    }
+
+@app.route('/admin/dashboard')
+def admin_dashboard():
+    """Trang dashboard"""
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+        
+    try:
+        conn = get_db_connection()
+        
+        # Lấy thống kê chấm công hôm nay
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow = today + timedelta(days=1)
+        
+        stats = {
+            'total_employees': conn.execute(
+                'SELECT COUNT(*) as count FROM employee WHERE company_id = ?',
+                (session['admin_company_id'],)
+            ).fetchone()['count'],
+            
+            'present_today': conn.execute("""
+                SELECT COUNT(DISTINCT employee_id) as count 
+                FROM attendance 
+                WHERE company_id = ? AND check_in_time BETWEEN ? AND ?
+                AND status = 'on_time'
+            """, (session['admin_company_id'], today.isoformat(), tomorrow.isoformat())
+            ).fetchone()['count'],
+            
+            'late_today': conn.execute("""
+                SELECT COUNT(DISTINCT employee_id) as count 
+                FROM attendance 
+                WHERE company_id = ? AND check_in_time BETWEEN ? AND ?
+                AND status = 'late'
+            """, (session['admin_company_id'], today.isoformat(), tomorrow.isoformat())
+            ).fetchone()['count']
+        }
+        
+        # Lấy 5 lần chấm công gần nhất
+        recent_attendance = conn.execute("""
+            SELECT 
+                a.check_in_time,
+                a.status,
+                e.name as employee_name,
+                e.employee_code,
+                d.name as department_name
+            FROM attendance a
+            JOIN employee e ON a.employee_id = e.id
+            LEFT JOIN department d ON e.department_id = d.id
+            WHERE a.company_id = ?
+            ORDER BY a.check_in_time DESC
+            LIMIT 5
+        """, (session['admin_company_id'],)).fetchall()
+        
+        return render_template('admin/dashboard.html',
+                            stats=stats,
+                            recent_attendance=recent_attendance)
+                            
+    except Exception as e:
+        print(f"Dashboard error: {str(e)}")
+        flash('Không thể tải dữ liệu dashboard', 'error')
+        return render_template('admin/dashboard.html')
 
 @app.route('/admin/complaint/<int:complaint_id>')
 def get_complaint_detail(complaint_id):
@@ -483,267 +733,541 @@ def get_complaint_detail(complaint_id):
         print(f"Lỗi khi lấy chi tiết đơn khiếu nại: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/check', methods=['POST'])
-def check():
-    """API endpoint cho chấm công (check in/out)"""
+def api_key_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        api_key = request.headers.get('X-API-Key')
+        if not api_key:
+            return jsonify({'error': 'API key is missing'}), 401
+            
+        # Kiểm tra API key trong database
+        conn = get_db_connection()
+        company = conn.execute('SELECT * FROM companies WHERE api_key = ?', (api_key,)).fetchone()
+        conn.close()
+        
+        if not company:
+            return jsonify({'error': 'Invalid API key'}), 401
+            
+        # Thêm company_id vào request để các hàm khác có thể sử dụng
+        request.company_id = company['id']
+        return f(*args, **kwargs)
+        
+    return decorated_function
+
+@api_key_required
+def checkin(company_id):
+    """API endpoint để chấm công"""
     try:
+        # Lấy dữ liệu từ request
         data = request.get_json()
         employee_id = data.get('employee_id')
-        check_time_str = data.get('check_time')
+        photo_path = data.get('photo_path')
+        confidence_score = data.get('confidence_score', 0.0)
+        device_info = data.get('device_info')
+        location = data.get('location')
         
-        if not employee_id:
-            return jsonify({'success': False, 'error': 'Không tìm thấy thông tin nhân viên'})
+        # Xử lý chấm công
+        result = process_attendance(
+            company_id=company_id,
+            employee_id=employee_id,
+            photo_path=photo_path,
+            confidence_score=confidence_score,
+            device_info=device_info,
+            location=location
+        )
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"Lỗi API chấm công: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def process_attendance(company_id, employee_id, photo_path, confidence_score, device_info=None, location=None):
+    """Xử lý thông tin chấm công"""
+    try:
+        # Kiểm tra thông tin đầu vào
+        if not all([company_id, employee_id, photo_path]):
+            return {"success": False, "error": "Thiếu thông tin bắt buộc"}
             
-        # Chuyển đổi string thành datetime
-        check_time = datetime.fromisoformat(check_time_str.replace('Z', '+00:00'))
+        # Lấy kết nối database
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        # Tìm nhân viên
-        employee = models.get_employee_by_id(employee_id)
+        # Lấy thông tin nhân viên
+        cursor.execute("""
+            SELECT name, employee_code FROM employee 
+            WHERE id = ? AND company_id = ?
+        """, (employee_id, company_id))
+        employee = cursor.fetchone()
+        
         if not employee:
-            return jsonify({'success': False, 'error': 'Không tìm thấy nhân viên'})
+            return {"success": False, "error": "Không tìm thấy nhân viên"}
+            
+        # Ghi nhận chấm công
+        now = datetime.now()
+        cursor.execute("""
+            INSERT INTO attendance (
+                company_id, employee_id, check_in_time, 
+                photo_path, confidence_score, device_info, location
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            company_id, employee_id, now.isoformat(),
+            photo_path, confidence_score,
+            json.dumps(device_info) if device_info else None,
+            json.dumps(location) if location else None
+        ))
         
-        # Chụp ảnh hiện tại
-        photo_path = None
-        with camera_lock:
-            ret, frame = camera.read()
-            if ret:
-                filename = f"check_{employee['employee_code']}_{int(time.time())}.jpg"
-                save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                cv2.imwrite(save_path, frame)
-                photo_path = f"uploads/{filename}"
+        attendance_id = cursor.lastrowid
+        conn.commit()
         
-        # Thêm hoặc cập nhật bản ghi chấm công
-        result = models.add_or_update_attendance(employee_id, check_time.isoformat(), photo_path)
+        return {
+            "success": True,
+            "attendance_id": attendance_id,
+            "employee": {
+                "name": employee['name'],
+                "employee_code": employee['employee_code']
+            },
+            "check_in_time": now.isoformat()
+        }
+        
+    except Exception as e:
+        print(f"Lỗi xử lý chấm công: {str(e)}")
+        return {"success": False, "error": str(e)}
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+@app.route('/admin/logout')
+def admin_logout():
+    session.pop('admin_logged_in', None)
+    session.pop('admin_company_id', None)
+    session.pop('company_code', None)
+    return redirect(url_for('index'))
+
+@app.route('/process_frame', methods=['POST'])
+def process_frame():
+    """API endpoint để xử lý frame với MTCNN"""
+    try:
+        data = request.get_json()
+        frame_data = data['frame'].split(',')[1]  # Remove data:image/jpeg;base64,
+        frame_bytes = base64.b64decode(frame_data)
+        
+        # Chuyển frame thành numpy array
+        nparr = np.frombuffer(frame_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        # Phát hiện và cắt khuôn mặt với MTCNN
+        face = extract_and_align_face(frame)
+        if face is None:
+            return jsonify({'success': False, 'error': 'Không phát hiện được khuôn mặt'})
+            
+        # Chuyển ảnh khuôn mặt thành base64
+        _, buffer = cv2.imencode('.jpg', face)
+        face_b64 = base64.b64encode(buffer).decode('utf-8')
         
         return jsonify({
             'success': True,
-            'message': result['message'],
-            'employee': {
-                'id': employee['id'],
-                'name': employee['name'],
-                'employee_code': employee['employee_code']
-            },
-            'check_time': check_time.strftime('%Y-%m-%d %H:%M:%S')
+            'face_image': f'data:image/jpeg;base64,{face_b64}'
         })
+        
     except Exception as e:
-        print(f"Lỗi khi chấm công: {str(e)}")
+        print(f"Error processing frame: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/admin-login', methods=['POST'])
-def admin_login():
-    """Xử lý đăng nhập admin"""
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
-    
-    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
-        session['admin_logged_in'] = True
-        return jsonify({'success': True, 'redirect': '/admin'})
-    else:
-        return jsonify({'success': False, 'message': 'Tên đăng nhập hoặc mật khẩu không chính xác'}), 401
-
-@app.route('/admin/stats')
-def get_admin_stats():
-    """API endpoint lấy số liệu thống kê cho dashboard"""
+@app.route('/retrain_model', methods=['POST'])
+def retrain_model():
+    """API endpoint để huấn luyện lại mô hình"""
     try:
-        # Số nhân viên đang làm việc
-        conn = models.get_db_connection()
-        active_employees = conn.execute('''
-            SELECT COUNT(*) as count FROM attendance 
-            WHERE date(check_in_time) = date('now') AND check_out_time IS NULL
-        ''').fetchone()['count']
+        # Lấy tất cả embedding từ database
+        conn = get_db_connection()
+        embeddings = conn.execute('SELECT * FROM embedding').fetchall()
         
-        # Tổng số nhân viên
-        total_employees = conn.execute('SELECT COUNT(*) as count FROM employee').fetchone()['count']
-        
-        # Số lượt check-in hôm nay
-        today_checkins = conn.execute('''
-            SELECT COUNT(*) as count FROM attendance 
-            WHERE date(check_in_time) = date('now')
-        ''').fetchone()['count']
-        
-        # Số đơn khiếu nại đang chờ xử lý
-        pending_complaints = conn.execute('''
-            SELECT COUNT(*) as count FROM complaint 
-            WHERE status = 'pending'
-        ''').fetchone()['count']
-        
-        conn.close()
-        
-        return jsonify({
-            'active_employees': active_employees,
-            'total_employees': total_employees,
-            'today_checkins': today_checkins,
-            'pending_complaints': pending_complaints
-        })
-    except Exception as e:
-        print(f"Lỗi khi lấy số liệu thống kê: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/admin/complaints')
-def get_complaints():
-    """API endpoint lấy danh sách tất cả các đơn khiếu nại"""
-    try:
-        complaints = models.get_all_complaints()
-        return jsonify(complaints)
-    except Exception as e:
-        print(f"Lỗi khi lấy danh sách khiếu nại: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/admin/process-complaint', methods=['POST'])
-def process_complaint():
-    """API endpoint xử lý đơn khiếu nại"""
-    try:
-        data = request.get_json()
-        complaint_id = data.get('complaint_id')
-        status = data.get('status')  # approved hoặc rejected
-        admin_note = data.get('admin_note')
-        
-        if not complaint_id or not status:
-            return jsonify({'success': False, 'error': 'Thiếu thông tin cần thiết'})
-        
-        # Sử dụng admin có ID 1 (sau này sẽ dùng admin đăng nhập)
-        admin_id = 1
-        
-        # Cập nhật trạng thái đơn
-        models.process_complaint(complaint_id, status, admin_id, admin_note)
-        
-        # Nếu duyệt đơn và có thời gian yêu cầu, cập nhật lại thời gian chấm công
-        if status == 'approved':
-            complaint = models.get_complaint_by_id(complaint_id)
-            if complaint and complaint['requested_time']:
-                # Xử lý cập nhật lịch sử chấm công theo thời gian yêu cầu
-                # Tùy thuộc vào logic nghiệp vụ của bạn
-                pass
-        
-        return jsonify({'success': True, 'message': f'Đơn khiếu nại đã được {status}'})
-    except Exception as e:
-        print(f"Lỗi khi xử lý đơn khiếu nại: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@app.route('/logout')
-def logout():
-    """Đăng xuất admin"""
-    # Xóa session hoặc cookie nếu có
-    return redirect(url_for('index'))
-
-@app.route('/employee-status/<int:employee_id>')
-def get_employee_status(employee_id):
-    """API endpoint để kiểm tra trạng thái chấm công của nhân viên"""
-    try:
-        conn = models.get_db_connection()
-        today_record = conn.execute('''
-            SELECT * FROM attendance 
-            WHERE employee_id = ? AND date(check_in_time) = date('now')
-            ORDER BY check_in_time DESC LIMIT 1
-        ''', (employee_id,)).fetchone()
-        
-        conn.close()
-        
-        if today_record:
-            return jsonify({
-                'checked_in': True,
-                'check_in_time': today_record['check_in_time'],
-                'checked_out': today_record['check_out_time'] is not None,
-                'check_out_time': today_record['check_out_time']
-            })
-        else:
-            return jsonify({
-                'checked_in': False,
-                'checked_out': False
-            })
-    except Exception as e:
-        print(f"Lỗi khi kiểm tra trạng thái nhân viên: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/today-attendance')
-def get_today_attendance():
-    """API endpoint lấy danh sách chấm công trong ngày"""
-    try:
-        conn = models.get_db_connection()
-        today_records = conn.execute('''
-            SELECT a.*, e.name, e.employee_code, e.profile_image
-            FROM attendance a
-            JOIN employee e ON a.employee_id = e.id
-            WHERE date(a.check_in_time) = date('now')
-            ORDER BY a.last_updated DESC
-        ''').fetchall()
-        
-        conn.close()
-        
-        result = []
-        for record in today_records:
-            result.append({
-                'id': record['id'],
-                'employee_id': record['employee_id'],
-                'name': record['name'],
-                'employee_code': record['employee_code'],
-                'profile_image': record['profile_image'],
-                'check_in_time': record['check_in_time'],
-                'check_out_time': record['check_out_time'],
-                'work_duration': record['work_duration'] if record['work_duration'] else None
-            })
+        if not embeddings:
+            return jsonify({'success': False, 'error': 'Không có dữ liệu embedding'})
             
-        return jsonify(result)
+        # Chuẩn bị dữ liệu huấn luyện
+        X = np.array([np.frombuffer(e['vector'], dtype=np.float32) for e in embeddings])
+        y = np.array([e['employee_id'] for e in embeddings])
+        
+        # Huấn luyện lại mô hình
+        model = train_classifier(X, y)
+        
+        # Lưu mô hình
+        save_model(model)
+        
+        return jsonify({'success': True})
+        
     except Exception as e:
-        print(f"Lỗi khi lấy danh sách chấm công trong ngày: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        print(f"Error retraining model: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/get-employee-by-code/<employee_code>')
-def get_employee_by_code(employee_code):
-    """API endpoint lấy thông tin nhân viên theo mã"""
+@app.route('/admin/settings')
+def admin_settings():
+    """Trang cài đặt hệ thống"""
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+        
     try:
-        employee = models.get_employee_by_code(employee_code)
+        conn = get_db_connection()
+        settings = conn.execute("""
+            SELECT settings_json 
+            FROM company 
+            WHERE id = ?
+        """, (session['admin_company_id'],)).fetchone()
+        
+        if settings and settings['settings_json']:
+            settings = json.loads(settings['settings_json'])
+        else:
+            settings = {
+                'work_start_time': '08:00',
+                'work_end_time': '17:30',
+                'late_threshold': 15
+            }
+            
+        return render_template('admin/settings.html', settings=settings)
+        
+    except Exception as e:
+        print(f"Settings error: {str(e)}")
+        flash('Không thể tải cài đặt', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/static/img/admin-avatar.png')
+def default_avatar():
+    return send_file('static/img/defaults/admin-avatar.png')
+
+@app.route('/static/img/company-logo.png') 
+def default_logo():
+    return send_file('static/img/defaults/company-logo.png')
+
+@app.route('/static/img/default-avatar.png')
+def default_avatar_img():
+    """Trả về ảnh avatar mặc định"""
+    try:
+        # Tạo thư mục nếu chưa tồn tại
+        os.makedirs('static/img/defaults', exist_ok=True)
+        
+        # Kiểm tra xem file có tồn tại ở vị trí mới không
+        if os.path.exists('static/img/defaults/default-avatar.png'):
+            return send_file('static/img/defaults/default-avatar.png')
+        
+        # Nếu không, kiểm tra ở vị trí cũ
+        if os.path.exists('static/img/default-avatar.png'):
+            return send_file('static/img/default-avatar.png')
+            
+        # Nếu không tìm thấy, tạo ảnh mặc định
+        img = np.ones((200, 200, 3), dtype=np.uint8) * 240  # Tạo ảnh xám
+        cv2.circle(img, (100, 100), 80, (200, 200, 200), -1)  # Vẽ hình tròn
+        cv2.circle(img, (100, 80), 30, (240, 240, 240), -1)  # Vẽ đầu
+        cv2.ellipse(img, (100, 130), (50, 30), 0, 0, 180, (240, 240, 240), -1)  # Vẽ thân
+        
+        # Lưu ảnh vào buffer
+        _, buffer = cv2.imencode('.png', img)
+        return Response(buffer.tobytes(), mimetype='image/png')
+    except Exception as e:
+        print(f"Lỗi khi tạo avatar mặc định: {str(e)}")
+        # Trả về 1x1 pixel transparent
+        return Response(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x00\x00\x02\x00\x01\x9a\x00\xe3G\x00\x00\x00\x00IEND\xaeB`\x82', mimetype='image/png')
+
+@app.route('/api/v1/admin/report-data', methods=['POST'])
+def get_report_data():
+    return jsonify({'error': 'API không còn được hỗ trợ'}), 404
+
+def get_employee_by_id(employee_id):
+    """Lấy thông tin nhân viên theo ID"""
+    conn = get_db_connection()
+    row = conn.execute('SELECT * FROM employee WHERE id = ?', (employee_id,)).fetchone()
+    conn.close()
+    
+    # Chuyển Row object thành dict
+    if row:
+        return dict(row)
+    return None
+
+@app.route('/api/employee-info')
+def get_employee_info_api():
+    """API endpoint để lấy thông tin nhân viên theo mã"""
+    employee_code = request.args.get('code')
+    if not employee_code:
+        return jsonify({'success': False, 'error': 'Thiếu mã nhân viên'})
+    
+    try:
+        conn = get_db_connection()
+        employee = conn.execute(
+            'SELECT * FROM employee WHERE employee_code = ?', 
+            (employee_code,)
+        ).fetchone()
+        conn.close()
+        
         if employee:
             return jsonify({
                 'success': True,
-                'employee': {
-                    'id': employee['id'],
-                    'name': employee['name'],
-                    'position': employee['position']
-                }
+                'employee': dict(employee)
             })
         else:
             return jsonify({
                 'success': False,
-                'message': 'Không tìm thấy nhân viên'
+                'error': 'Không tìm thấy nhân viên'
             })
     except Exception as e:
-        print(f"Lỗi khi lấy thông tin nhân viên: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f"Error getting employee info: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/detection-status')
-def get_detection_status():
-    """API endpoint lấy trạng thái nhận diện hiện tại"""
-    global current_confidence, face_detected, detected_employee
-    return jsonify({
-        'face_detected': face_detected,
-        'confidence': current_confidence,
-        'employee': detected_employee.get('name', None) if detected_employee else None
-    })
-
-@app.route('/capture-raw-frame')
+@app.route('/capture-raw-frame', methods=['GET'])
 def capture_raw_frame():
-    """Chụp frame từ camera không có bounding box"""
-    global camera
-    
-    if not camera or not camera.isOpened():
-        if not init_camera():
-            return Response('Không thể kết nối camera', status=500)
-    
-    with camera_lock:
-        ret, frame = camera.read()
+    """API để chụp ảnh nguyên bản từ camera"""
+    try:
+        if not wait_for_camera():
+            return jsonify({
+                'success': False,
+                'error': 'Không thể kết nối camera'
+            })
         
-    if not ret:
-        return Response('Không thể đọc frame từ camera', status=500)
-    
-    # Chuyển frame thành ảnh JPEG
-    ret, buffer = cv2.imencode('.jpg', frame)
-    if not ret:
-        return Response('Không thể tạo ảnh JPEG', status=500)
-    
-    # Trả về ảnh dạng response
-    return Response(buffer.tobytes(), mimetype='image/jpeg')
+        # Chụp frame hiện tại
+        ret, frame = camera.read()
+        if not ret:
+            return jsonify({
+                'success': False,
+                'error': 'Không thể đọc từ camera'
+            })
+        
+        # Chuyển thành base64
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_b64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return jsonify({
+            'success': True,
+            'image': f'data:image/jpeg;base64,{frame_b64}'
+        })
+    except Exception as e:
+        print(f"Error capturing raw frame: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/admin/complaints')
+def admin_complaints():
+    """Trang quản lý khiếu nại"""
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+        
+    try:
+        conn = get_db_connection()
+        complaints = conn.execute('''
+            SELECT c.*, e.name as employee_name, e.employee_code
+            FROM complaints c
+            JOIN employee e ON c.employee_id = e.id
+            WHERE c.company_id = ?
+            ORDER BY c.created_at DESC
+        ''', (session['admin_company_id'],)).fetchall()
+        
+        return render_template('admin/complaints.html', complaints=[dict(c) for c in complaints])
+        
+    except Exception as e:
+        print(f"Complaints error: {str(e)}")
+        flash('Không thể tải danh sách khiếu nại', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/complaints/approve/<int:complaint_id>', methods=['POST'])
+def approve_complaint(complaint_id):
+    """Duyệt đơn khiếu nại"""
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+    try:
+        data = request.get_json() or {}
+        
+        conn = get_db_connection()
+        
+        # Lấy thông tin khiếu nại và chuyển thành dict
+        complaint_row = conn.execute(
+            'SELECT * FROM complaints WHERE id = ?', (complaint_id,)
+        ).fetchone()
+        
+        if not complaint_row:
+            return jsonify({'success': False, 'error': 'Không tìm thấy khiếu nại'})
+            
+        # Chuyển Row thành dict
+        complaint = dict_from_row(complaint_row)
+        
+        # Kiểm tra đã có bản ghi chấm công hôm nay chưa
+        today = datetime.now().strftime('%Y-%m-%d')
+        attendance = conn.execute('''
+            SELECT * FROM attendance 
+            WHERE employee_id = ? AND DATE(check_in_time) = ?
+        ''', (complaint['employee_id'], today)).fetchone()
+        
+        # Cách này an toàn hơn
+        complaint_time = datetime.fromisoformat(complaint['complaint_time'].replace('Z', '+00:00') if complaint['complaint_time'].endswith('Z') else complaint['complaint_time'])
+        
+        # Nếu chưa có bản ghi => tạo mới (check in)
+        if not attendance:
+            conn.execute('''
+                INSERT INTO attendance (
+                    employee_id, company_id, check_in_time, status
+                ) VALUES (?, ?, ?, ?)
+            ''', (
+                complaint['employee_id'],
+                complaint['company_id'],
+                complaint_time,
+                'manual'
+            ))
+        else:
+            # Nếu đã có bản ghi => cập nhật (check out)
+            conn.execute('''
+                UPDATE attendance
+                SET check_out_time = ?
+                WHERE id = ?
+            ''', (complaint_time, attendance['id']))
+        
+        # Cập nhật trạng thái khiếu nại
+        conn.execute('''
+            UPDATE complaints
+            SET status = ?, admin_note = ?
+            WHERE id = ?
+        ''', ('approved', data.get('note', ''), complaint_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        print(f"Approve complaint error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/admin/complaints/reject/<int:complaint_id>', methods=['POST'])
+def reject_complaint(complaint_id):
+    """Từ chối đơn khiếu nại"""
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+    try:
+        data = request.get_json()
+        reason = data.get('reason')
+        
+        if not reason:
+            return jsonify({'success': False, 'error': 'Vui lòng cung cấp lý do từ chối'})
+            
+        conn = get_db_connection()
+        conn.execute('''
+            UPDATE complaints
+            SET status = ?, admin_note = ?
+            WHERE id = ?
+        ''', ('rejected', reason, complaint_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        print(f"Reject complaint error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/complaint/<int:complaint_id>')
+def get_complaint_api(complaint_id):
+    """API endpoint để lấy thông tin chi tiết khiếu nại"""
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'error': 'Unauthorized'})
+        
+    try:
+        conn = get_db_connection()
+        complaint = conn.execute('''
+            SELECT c.*, e.name as employee_name, e.employee_code
+            FROM complaints c
+            JOIN employee e ON c.employee_id = e.id
+            WHERE c.id = ?
+        ''', (complaint_id,)).fetchone()
+        
+        if not complaint:
+            return jsonify({'success': False, 'error': 'Không tìm thấy khiếu nại'})
+            
+        return jsonify({
+            'success': True,
+            'complaint': dict(complaint)
+        })
+        
+    except Exception as e:
+        print(f"Get complaint error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/capture-complaint-image')
+def capture_complaint_image():
+    """API để chụp ảnh khiếu nại từ server"""
+    try:
+        # Kiểm tra camera
+        if not init_camera():
+            return jsonify({
+                'success': False,
+                'error': 'Không thể kết nối camera'
+            })
+        
+        # Chụp frame hiện tại
+        ret, frame = camera.read()
+        if not ret or frame is None:
+            return jsonify({
+                'success': False,
+                'error': 'Không thể đọc từ camera'
+            })
+        
+        # Chuyển thành base64
+        _, buffer = cv2.imencode('.jpg', frame)
+        frame_b64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return jsonify({
+            'success': True,
+            'image': f'data:image/jpeg;base64,{frame_b64}'
+        })
+    except Exception as e:
+        print(f"Error capturing complaint image: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+
+# Thêm hàm này để chuyển sqlite3.Row thành dict
+def dict_from_row(row):
+    """Chuyển đổi sqlite3.Row thành dict"""
+    if row is None:
+        return None
+    return {key: row[key] for key in row.keys()}
+
+@app.route('/today-attendance')
+def today_attendance():
+    """API endpoint lấy danh sách chấm công hôm nay"""
+    try:
+        conn = get_db_connection()
+        
+        # Lấy ngày hiện tại
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Truy vấn danh sách chấm công
+        attendance_list = conn.execute('''
+            SELECT a.*, e.name, e.employee_code
+            FROM attendance a
+            JOIN employee e ON a.employee_id = e.id
+            WHERE DATE(a.check_in_time) = ?
+            ORDER BY a.check_in_time DESC
+        ''', (today,)).fetchall()
+        
+        # Chuyển về dạng dict
+        result = []
+        for item in attendance_list:
+            attendance_dict = dict_from_row(item)
+            # Format lại thời gian cho dễ đọc
+            if attendance_dict.get('check_in_time'):
+                check_in = datetime.fromisoformat(attendance_dict['check_in_time'].replace('Z', '+00:00'))
+                attendance_dict['check_in_time_formatted'] = check_in.strftime('%H:%M:%S')
+            
+            if attendance_dict.get('check_out_time'):
+                check_out = datetime.fromisoformat(attendance_dict['check_out_time'].replace('Z', '+00:00'))
+                attendance_dict['check_out_time_formatted'] = check_out.strftime('%H:%M:%S')
+            
+            result.append(attendance_dict)
+        
+        conn.close()
+        return jsonify({'success': True, 'data': result})
+        
+    except Exception as e:
+        print(f"Error getting today attendance: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Khởi tạo camera trong thread riêng
+    threading.Thread(target=init_camera, daemon=True).start()
+    app.run(debug=True, threaded=True)
