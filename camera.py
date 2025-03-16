@@ -7,6 +7,10 @@ video_capture = cv2.VideoCapture(0)
 video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 video_capture.set(cv2.CAP_PROP_FPS, 30)
+video_capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+video_capture.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+video_capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+video_capture.set(cv2.CAP_PROP_SETTINGS, 1)
 
 def gen(set_predicted_label, train=False):
     while True:

@@ -52,7 +52,7 @@
             "{{ url_for('video_feed', train=true) }}";
 
           // Initialize image capture every 0.5 seconds
-          captureInterval = setInterval(captureImage, 500);
+          captureInterval = setInterval(captureImage, 1000);
         });
 
       // Capture image from the video stream
@@ -80,7 +80,7 @@
           capturedImages.push(blob);
 
           // Stop after 5 images
-          if (imageCount >= 5) {
+          if (imageCount >= 10) {
             clearInterval(captureInterval);
             sendImagesToApi();
           }
@@ -93,9 +93,10 @@
 
         // Append the captured images to the FormData
         capturedImages.forEach((image, index) => {
+          const imageUrl = URL.createObjectURL(image); // Tạo URL tạm thời
+          console.log(`Image ${index + 1} URL:`, imageUrl); // In URL ảnh ra console
           formData.append("images", image, `image_${index + 1}.jpg`);
         });
-
         // Add the employee name to the form data
         formData.append("name", name);
 

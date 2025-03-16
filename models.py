@@ -34,7 +34,7 @@ class Attendance(BaseModel):
 
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)  # sửa thành Integer
-    check_in_time = db.Column(db.DateTime, nullable=False)
+    check_in_time = db.Column(db.DateTime, default=get_vn_time)
     check_out_time = db.Column(db.DateTime, nullable=True)  # Chỉnh lại nếu cần
     status = db.Column(db.String, default='on_time')
 

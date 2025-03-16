@@ -90,7 +90,6 @@ def train(files, employee_id):
     Embedding.query.filter_by(employee_id=employee_id).delete()
     db.session.commit()
     embeddings, labels = [], []
-
     # 🔹 Load tất cả embeddings cũ từ database trước khi train
     data = Embedding.query.all()
     for item in data:
