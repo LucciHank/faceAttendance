@@ -1,0 +1,7 @@
+myenv/
+__pycache__/
+*.onnx
+/myenv/
+/myenv
+/__pycache__
+/__pycache__/

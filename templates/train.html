@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Train Employee</title>
+  </head>
+  <body>
+    <h1>Train Face Recognition with Flask</h1>
+
+    <!-- Form to input the employee's name -->
+    <div>
+      <label for="name">Employee Name: </label>
+      <input type="text" id="name" required />
+      <button id="startButton">Start Training</button>
+    </div>
+
+    <!-- Display video stream -->
+    <img id="video" src="" width="640" height="480" style="display: none" />
+
+    <!-- Display number of images taken -->
+    <div>
+      <p>Images captured: <span id="capturedCount">0</span></p>
+    </div>
+
+    <!-- Display the result after training -->
+    <div id="result" style="display: none">
+      <p>Employee ID: <span id="employeeId"></span></p>
+      <p>Employee Name: <span id="employeeName"></span></p>
+      <p>Status: <span id="statusMessage"></span></p>
+    </div>
+
+    <script>
+      let imageCount = 0;
+      let name = "";
+      let captureInterval;
+      let capturedImages = [];
+
+      // Start training on button click
+      document
+        .getElementById("startButton")
+        .addEventListener("click", function () {
+          name = document.getElementById("name").value;
+          if (name.trim() === "") {
+            alert("Please enter a name!");
+            return;
+          }
+
+          // Show the video stream and start capturing images
+          document.getElementById("video").style.display = "block";
+          document.getElementById("video").src =
+            "{{ url_for('video_feed', train=true) }}";
+
+          // Initialize image capture every 0.5 seconds
+          captureInterval = setInterval(captureImage, 500);
+        });
+
+      // Capture image from the video stream
+      function captureImage() {
+        imageCount++;
+        document.getElementById("capturedCount").textContent = imageCount;
+
+        // Get the canvas and draw the current frame from the video
+        const canvas = document.createElement("canvas");
+        const video = document.getElementById("video");
+        canvas.width = video.width;
+        canvas.height = video.height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Convert canvas to image file (data URL) and return a promise
+        const captureBlob = new Promise((resolve) => {
+          canvas.toBlob(function (blob) {
+            resolve(blob);
+          }, "image/jpeg");
+        });
+
+        // Push the promise to an array
+        captureBlob.then((blob) => {
+          capturedImages.push(blob);
+
+          // Stop after 5 images
+          if (imageCount >= 5) {
+            clearInterval(captureInterval);
+            sendImagesToApi();
+          }
+        });
+      }
+
+      // Send images to the API
+      function sendImagesToApi() {
+        let formData = new FormData();
+
+        // Append the captured images to the FormData
+        capturedImages.forEach((image, index) => {
+          formData.append("images", image, `image_${index + 1}.jpg`);
+        });
+
+        // Add the employee name to the form data
+        formData.append("name", name);
+
+        // Send the POST request to the API
+        fetch("/api/employee", {
+          method: "POST",
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            // Display result information
+            document.getElementById("result").style.display = "block";
+            document.getElementById("employeeId").textContent =
+              data.employee_id;
+            document.getElementById("employeeName").textContent = data.name;
+            document.getElementById("statusMessage").textContent = data.message;
+
+            // Reset captured data and image count
+            resetCaptureData();
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            alert("Something went wrong.");
+          });
+      }
+
+      // Reset captured images and counter
+      function resetCaptureData() {
+        // Clear captured images array and reset image count
+        capturedImages = [];
+        imageCount = 0;
+        document.getElementById("capturedCount").textContent = imageCount;
+
+        // Hide the video stream and set video source to empty
+        document.getElementById("video").style.display = "none";
+        document.getElementById("video").src = "";
+      }
+    </script>
+  </body>
+</html>
