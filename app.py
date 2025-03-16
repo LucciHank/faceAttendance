@@ -10,12 +10,15 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
+# Toàn bộ các API sẽ đều phải truy cập thông qua route /api
+# VD: /api/checkin
 app.register_blueprint(api_bp, url_prefix='/api')
 
 def set_predicted_label(value):
     global predicted_label
     predicted_label = value
 
+# Các route giao diện
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -24,11 +27,13 @@ def index():
 def train():
     return render_template('train.html')
 
+# Stream Video lên trình duyệt
 @app.route('/video_feed')
 def video_feed():
     train = request.args.get('train', 'false').lower() == 'true'
     return Response(gen(set_predicted_label, train), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+# Stream kết quả Label trên trình duyệt
 @app.route('/get_label')
 def get_label():
     def event_stream():
