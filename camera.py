@@ -23,14 +23,13 @@ def gen(set_predicted_label, train=False):
         if result is not None: 
             face, bbox = result
         
-        if bbox is not None and face is not None:
+        if bbox is not None and face is not None and not train:
             x1, y1 = bbox[0]
             x2, y2 = bbox[2]
             cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            if not train:
-                predicted_label = predict(face)
-                set_predicted_label(predicted_label)  # Cập nhật predicted_label
-                cv2.putText(image, predicted_label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            predicted_label = predict(face)
+            set_predicted_label(predicted_label)  # Cập nhật predicted_label
+            cv2.putText(image, predicted_label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
         else:
             set_predicted_label('')  # Nếu không có khuôn mặt, đặt giá trị predicted_label rỗng
         

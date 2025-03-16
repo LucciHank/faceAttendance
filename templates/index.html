@@ -4,17 +4,194 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Face Recognition</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        text-align: center;
+      }
+      img {
+        border: 2px solid #000;
+        margin-bottom: 10px;
+      }
+      #label {
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      #status {
+        min-height: 30px; /* Đặt chiều cao tối thiểu để không bị nhảy */
+        line-height: 30px; /* Căn giữa theo chiều dọc */
+        font-size: 16px;
+        font-weight: bold;
+        text-align: center;
+        color: #ff9800; /* Màu cam để nổi bật */
+        background-color: #fff3cd; /* Nền vàng nhạt để thu hút chú ý */
+        border: 1px solid #ffcc00; /* Viền để phân biệt */
+        border-radius: 5px;
+        padding: 5px 10px;
+        margin: 10px 0;
+        visibility: hidden; /* Mặc định ẩn nhưng vẫn giữ chỗ */
+      }
+
+      #status.active {
+        visibility: visible; /* Khi có nội dung thì hiển thị */
+      }
+
+      .modal {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 20px;
+        border: 1px solid black;
+        box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2);
+      }
+      .modal-content {
+        margin-bottom: 10px;
+      }
+      .close {
+        cursor: pointer;
+        color: red;
+      }
+    </style>
   </head>
   <body>
     <h1>Face Recognition with Flask</h1>
-    <img src="{{ url_for('video_feed') }}" width="640" height="480" />
+    <img
+      id="video"
+      src="{{ url_for('video_feed') }}"
+      width="640"
+      height="480"
+    />
     <div id="label">Label:</div>
+    <div id="status"></div>
+    <div id="modal" class="modal">
+      <div id="modal-content" class="modal-content"></div>
+      <p id="countdown"></p>
+      <button class="close" onclick="closeModal()">Close</button>
+    </div>
 
     <script>
-      const source = new EventSource("/get_label");
-      source.onmessage = function (event) {
-        document.getElementById("label").textContent = "Label: " + event.data;
-      };
+      let lastLabel = "";
+      let unchangedTime = 0;
+      let locked = false;
+      let checking = false;
+      let verifyTimeout = null;
+      let source = new EventSource("/get_label");
+
+      function startEventSource() {
+        if (source) {
+          source.close(); // Đảm bảo không có instance nào trước khi mở lại
+        }
+        source = new EventSource("/get_label");
+        source.onmessage = handleLabel;
+      }
+
+      function handleLabel(event) {
+        if (locked) return;
+
+        const newLabel = event.data;
+        document.getElementById("label").textContent = "Label: " + newLabel;
+        const statusElement = document.getElementById("status");
+
+        if (newLabel && newLabel === lastLabel) {
+          unchangedTime += 1000;
+        } else {
+          unchangedTime = 0;
+          statusElement.textContent = "";
+          statusElement.classList.remove("active");
+          checking = false;
+
+          // Hủy xác minh nếu nhãn thay đổi
+          if (verifyTimeout) {
+            clearTimeout(verifyTimeout);
+            verifyTimeout = null;
+          }
+        }
+        lastLabel = newLabel;
+
+        if (unchangedTime >= 5000 && !checking) {
+          checking = true;
+          statusElement.textContent = `Đang xác minh nhân viên mã ${newLabel}`;
+          statusElement.classList.add("active");
+          // Đặt bộ đếm thời gian và lưu ID vào `verifyTimeout`
+          verifyTimeout = setTimeout(() => {
+            if (checking && lastLabel === newLabel) {
+              locked = true;
+              source.close(); // Chỉ tắt nguồn sự kiện, không ảnh hưởng video
+              checkIn(newLabel);
+            } else {
+              checking = false;
+              statusElement.textContent = "";
+              statusElement.classList.remove("active");
+            }
+            verifyTimeout = null; // Reset biến sau khi kiểm tra xong
+          }, 3000);
+        }
+      }
+
+      source.onmessage = handleLabel;
+
+      function checkIn(employeeId) {
+        let formData = new FormData();
+        formData.append("employee_id", employeeId);
+
+        fetch("/api/checkin", {
+          method: "POST",
+          body: formData,
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            showModal(data);
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            resetState(); // Đảm bảo reset lại nếu có lỗi
+          });
+      }
+
+      function showModal(data) {
+        const modal = document.getElementById("modal");
+        const content = document.getElementById("modal-content");
+        const countdown = document.getElementById("countdown");
+        content.innerHTML = `
+    <p>${data.message}</p>
+    <p>ID: ${data.employee.id}</p>
+    <p>Name: ${data.employee.name}</p>
+    <p>Check-in: ${data.employee.check_in_time || "N/A"}</p>
+    <p>Check-out: ${data.employee.check_out_time || "N/A"}</p>
+  `;
+        modal.style.display = "block";
+        let timeLeft = 5;
+        countdown.textContent = `Closing in ${timeLeft}s`;
+        const interval = setInterval(() => {
+          countdown.textContent = `Closing in ${--timeLeft}s`;
+          if (timeLeft === 0) {
+            clearInterval(interval);
+            closeModal();
+          }
+        }, 1000);
+      }
+
+      function closeModal() {
+        document.getElementById("modal").style.display = "none";
+        resetState(); // Gọi reset lại trạng thái sau khi đóng modal
+      }
+
+      // 🛠️ Reset lại trạng thái để hệ thống tiếp tục xác minh nhân viên mới
+      function resetState() {
+        locked = false;
+        checking = false;
+        unchangedTime = 0;
+        lastLabel = "";
+        startEventSource(); // Mở lại EventSource để tiếp tục nhận dữ liệu
+      }
     </script>
   </body>
 </html>

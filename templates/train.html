@@ -7,6 +7,7 @@
   </head>
   <body>
     <h1>Train Face Recognition with Flask</h1>
+    <a href="/"><button>Checkin Page</button></a>
 
     <!-- Form to input the employee's name -->
     <div>
@@ -80,7 +81,7 @@
           capturedImages.push(blob);
 
           // Stop after 5 images
-          if (imageCount >= 10) {
+          if (imageCount >= 6) {
             clearInterval(captureInterval);
             sendImagesToApi();
           }
