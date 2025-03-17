@@ -141,5 +141,10 @@ def predict(face):
     img = np.transpose(img, (2, 0, 1))
     face_input = np.expand_dims(img, axis=0).astype(np.float32)
     outputs = rec_model.run(None, {rec_model.get_inputs()[0].name: face_input})
-    predicted_label = cls_model.predict(outputs[0])
-    return predicted_label[0]
+    label_mapping = cls_model.classes_  
+    predicted_probs = cls_model.predict_proba(outputs[0])
+    predicted_index = np.argmax(predicted_probs, axis=1)[0]
+    confidence = np.max(predicted_probs)
+    predicted_label = label_mapping[predicted_index]
+    if confidence < 0.8 or predicted_label.lower() == "unknown": return ""
+    return predicted_label
