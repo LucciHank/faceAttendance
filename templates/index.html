@@ -116,7 +116,7 @@
         }
         lastLabel = newLabel;
 
-        if (unchangedTime >= 5000 && !checking) {
+        if (unchangedTime >= 3000 && !checking) {
           checking = true;
           statusElement.textContent = `Đang xác minh nhân viên mã ${newLabel}`;
           statusElement.classList.add("active");
