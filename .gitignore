@@ -1,8 +1,10 @@
-myenv/
+venv/
 __pycache__/
 *.onnx
 /myenv/
 /myenv
+/venv
+/venv/
 /__pycache__
 /__pycache__/
 *.db
