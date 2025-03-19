@@ -1,474 +1,235 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Face Recognition</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <title>App CheckIn</title>
     <style>
-      :root {
-        --bg-dark: #121212;
-        --bg-medium: #1e1e1e;
-        --bg-light: #2d2d2d;
-        --text-light: #ffffff;
-        --text-medium: #e0e0e0;
-        --text-muted: #a0a0a0;
-        --accent: #888888;
-        --accent-hover: #a0a0a0;
-        --card-spacing: 1.5rem;
-        --border-radius: 12px;
-        --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.1);
-        --shadow-strong: 0 10px 40px rgba(0, 0, 0, 0.2);
+      @font-face {
+        font-family: 'Space Habitat';
+        src: url('/static/fonts/DFVN MBF Space Habitat Regular.otf') format('opentype');
+      }
+      
+      @font-face {
+        font-family: 'Roboto Light';
+        src: url('/static/fonts/Roboto-Light.ttf') format('truetype');
+      }
+      
+      @font-face {
+        font-family: 'Roboto Regular';
+        src: url('/static/fonts/Roboto-Regular.ttf') format('truetype');
+      }
+      
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
       }
       
       body {
+        width: 100%;
+        height: 100vh;
+        background-image: url('/static/images/bgr.png');
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        min-height: 100vh;
-        background-color: var(--bg-dark);
-        color: var(--text-light);
-        font-family: 'Inter', sans-serif;
-        padding: var(--card-spacing) 0;
-        margin: 0;
-        line-height: 1.6;
-      }
-
-      .container {
-        width: 95%;
-        max-width: 800px;
-        margin: 0 auto;
-      }
-
-      .card {
-        background: var(--bg-medium);
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-soft);
-        margin-bottom: var(--card-spacing);
-        padding: var(--card-spacing);
-        transition: all 0.3s ease;
-      }
-
-      .card:hover {
-        box-shadow: var(--shadow-strong);
-      }
-
-      .header-card {
-        text-align: center;
-        padding: 2.5rem 2rem 2rem;
-        margin-bottom: 2rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: linear-gradient(to bottom, var(--bg-medium), var(--bg-light));
-      }
-
-      .header-card h1 {
-        font-size: 1.8rem;
-        font-weight: 600;
-        margin: 0;
-        color: var(--text-light);
-        letter-spacing: 0.5px;
-        flex: 1;
-      }
-
-      .nav-controls {
-        display: flex;
-        align-items: center;
-      }
-
-      .video-card {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 2rem;
-        position: relative;
-        background: var(--bg-medium);
-      }
-
-      .video-container {
-        position: relative;
-        width: 100%;
-        max-width: 640px;
         overflow: hidden;
-        margin-bottom: 2rem;
-        box-shadow: var(--shadow-soft);
-        border-radius: var(--border-radius);
+        color: white;
+        font-family: 'Roboto Regular', sans-serif;
+        position: relative;
       }
-
-      #video {
-        border-radius: var(--border-radius);
-        display: block;
-        max-width: 100%;
-        height: auto;
+      
+      .main-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        max-width: 1200px;
+        position: relative;
       }
-
-      .frame-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
+      
+      .camera-container {
+        width: 650px;
+        height: 400px;
+        border-radius: 20px;
+        background-color: #0c2973;
+        border: 5px solid #0c2973;
+        box-shadow: 0 0 30px rgba(0, 106, 255, 0.4);
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .camera-inner {
+        width: calc(100% - 10px);
+        height: calc(100% - 10px);
+        margin: 5px;
+        border-radius: 15px;
+        overflow: hidden;
+        background-color: #041640;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+      
+      .camera-feed {
         width: 100%;
         height: 100%;
-        border-radius: var(--border-radius);
-        pointer-events: none;
-        z-index: 10;
-        box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.1);
+        object-fit: cover;
       }
-
-      .frame-corner {
+      
+      .camera-status {
         position: absolute;
-        width: 20px;
-        height: 20px;
-        border-color: var(--text-light);
-        border-style: solid;
-        border-width: 0;
-      }
-
-      .top-left {
-        top: 10px;
-        left: 10px;
-        border-top-width: 2px;
-        border-left-width: 2px;
-      }
-
-      .top-right {
-        top: 10px;
-        right: 10px;
-        border-top-width: 2px;
-        border-right-width: 2px;
-      }
-
-      .bottom-left {
-        bottom: 10px;
-        left: 10px;
-        border-bottom-width: 2px;
-        border-left-width: 2px;
-      }
-
-      .bottom-right {
-        bottom: 10px;
-        right: 10px;
-        border-bottom-width: 2px;
-        border-right-width: 2px;
-      }
-
-      #label {
-        font-size: 1.1rem;
-        font-weight: 500;
-        margin: 0 0 1.5rem;
-        padding: 1rem 1.5rem;
-        background: var(--bg-light);
-        border-radius: var(--border-radius);
-        width: fit-content;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-      }
-
-      #status {
-        font-size: 1rem;
-        font-weight: 500;
+        bottom: 15px;
+        left: 0;
+        right: 0;
         text-align: center;
-        color: var(--text-light);
-        background-color: var(--bg-light);
-        border-radius: var(--border-radius);
-        padding: 1rem 1.5rem;
-        margin: 0 0 var(--card-spacing);
-        width: 100%;
-        max-width: 500px;
-        visibility: hidden;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.75rem;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        font-family: 'Roboto Regular', sans-serif;
+        font-size: 18px;
+        color: white;
       }
-
-      #status.active {
-        visibility: visible;
+      
+      .app-name {
+        position: absolute;
+        left: -250px;
+        top: 50%;
+        transform: translateY(-50%);
+        text-align: right;
       }
-
-      .btn {
-        background-color: var(--accent);
-        color: var(--text-light);
-        border: none;
-        padding: 0.75rem 1.5rem;
-        border-radius: var(--border-radius);
+      
+      .app-name h1 {
+        font-family: 'Space Habitat', sans-serif;
+        font-size: 70px;
+        line-height: 0.9;
+        letter-spacing: 2px;
+        font-weight: normal;
+        margin-bottom: 20px;
+      }
+      
+      .app-name .app {
+        font-size: 60px;
+      }
+      
+      .admin-btn {
+        display: inline-block;
+        padding: 10px 25px;
+        background-color: rgba(255, 255, 255, 0.4);
+        border-radius: 30px;
+        font-family: 'Roboto Light', sans-serif;
+        font-size: 18px;
         cursor: pointer;
-        font-weight: 600;
-        font-size: 0.95rem;
         transition: all 0.3s ease;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.75rem;
-        letter-spacing: 0.3px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
       }
-
-      .btn:hover {
-        background-color: var(--accent-hover);
-        transform: translateY(-2px);
-        box-shadow: 0 6px 15px rgba(0,0,0,0.15);
+      
+      .admin-btn:hover {
+        background-color: rgba(255, 255, 255, 0.6);
       }
-
-      .footer-controls {
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        margin-top: 1rem;
-      }
-
-      /* Loading Animation */
-      .loading-dots {
-        display: inline-flex;
-        align-items: center;
-        height: 16px;
-        gap: 4px;
-      }
-
-      .dot {
-        display: inline-block;
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background-color: var(--text-light);
-        animation: dotPulse 1.5s infinite;
-      }
-
-      .dot:nth-child(2) { animation-delay: 0.2s; }
-      .dot:nth-child(3) { animation-delay: 0.4s; }
-
-      @keyframes dotPulse {
-        0%, 100% { transform: scale(0.8); opacity: 0.5; }
-        50% { transform: scale(1.2); opacity: 1; }
-      }
-
-      /* Animation checkmark */
-      .checkmark-circle {
-        width: 80px;
-        height: 80px;
-        position: relative;
-        display: inline-block;
-        vertical-align: top;
-        margin-bottom: 1rem;
-      }
-
-      .checkmark-circle .background {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        background: rgba(45, 45, 45, 0.8);
+      
+      .instructions {
         position: absolute;
-        box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
-      }
-
-      .checkmark-circle .checkmark {
-        border-radius: 5px;
-      }
-
-      .checkmark-circle .checkmark.draw:after {
-        animation-delay: 0.2s;
-        animation-duration: 0.8s;
-        animation-timing-function: ease;
-        animation-name: checkmark;
-        transform: scaleX(-1) rotate(135deg);
-        animation-fill-mode: forwards;
-      }
-
-      .checkmark-circle .checkmark:after {
-        opacity: 1;
-        height: 40px;
-        width: 18px;
-        transform-origin: left top;
-        border-right: 5px solid #ffffff !important;
-        border-top: 5px solid #ffffff !important;
-        border-radius: 2px !important;
-        content: '';
-        left: 22px;
-        top: 46px;
-        position: absolute;
-        filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.3));
-      }
-
-      @keyframes checkmark {
-        0% {
-          height: 0;
-          width: 0;
-          opacity: 1;
-        }
-        20% {
-          height: 0;
-          width: 10px;
-          opacity: 1;
-        }
-        40% {
-          height: 20px;
-          width: 18px;
-          opacity: 1;
-        }
-        100% {
-          height: 40px;
-          width: 18px;
-          opacity: 1;
-        }
-      }
-
-      /* Swal custom class */
-      .swal2-popup.success-checkin {
-        padding: 2.5em;
-        background: var(--bg-medium);
-        border-radius: var(--border-radius);
-        box-shadow: 0 15px 35px rgba(0,0,0,0.2);
-      }
-
-      .swal2-icon {
-        border-color: var(--text-light) !important;
-        color: var(--text-light) !important;
-      }
-
-      /* Sửa màu cho thanh timer */
-      .swal2-timer-progress-bar {
-        background: #ffffff !important;
-        height: 0.25em !important;
-        filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.5)) !important;
-      }
-
-      .status-box {
+        right: -100px;
+        top: 50%;
+        transform: translateY(-50%);
         text-align: left;
-        padding: 20px;
-        background: var(--bg-light);
-        border-radius: var(--border-radius);
-        margin: 20px 0;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
       }
       
-      .status-item {
-        margin: 15px 0;
-        padding-bottom: 15px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-        display: flex;
-        align-items: center;
+      .instructions h2 {
+        font-family: 'Space Habitat', sans-serif;
+        font-size: 30px;
+        margin-bottom: 15px;
+        font-weight: normal;
       }
       
-      .status-item:last-child {
-        border-bottom: none;
-        padding-bottom: 0;
+      .instructions ol {
+        list-style-type: decimal;
+        margin-left: 25px;
+        font-family: 'Roboto Regular', sans-serif;
+        font-size: 18px;
+        line-height: 1.5;
+        margin-bottom: 20px;
       }
       
-      .status-icon {
-        width: 36px;
+      .complaint-btn {
+        display: inline-block;
+        padding: 10px 25px;
+        background-color: rgba(255, 255, 255, 0.4);
+        border-radius: 30px;
+        font-family: 'Roboto Light', sans-serif;
+        font-size: 18px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      
+      .complaint-btn:hover {
+        background-color: rgba(255, 255, 255, 0.6);
+      }
+      
+      .icon-top {
+        position: absolute;
+        top: -300px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80px;
+        height: 80px;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--text-light);
-        font-size: 1.1rem;
+        z-index: 10;
+        filter: brightness(0) invert(1);
       }
       
-      .status-message {
-        margin-top: 15px;
-        text-align: center;
-        font-size: 1.3rem;
-        font-weight: 600;
-        color: var(--text-light);
-        padding: 15px;
+      .icon-top img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
       }
-
-      /* Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-
-      ::-webkit-scrollbar-track {
-        background: var(--bg-dark);
-        border-radius: var(--border-radius);
-      }
-
-      ::-webkit-scrollbar-thumb {
-        background: var(--bg-light);
-        border-radius: var(--border-radius);
-      }
-
-      ::-webkit-scrollbar-thumb:hover {
-        background: var(--accent);
-      }
-
-      /* Responsive adjustments */
-      @media (max-width: 768px) {
-        :root {
-          --card-spacing: 1.2rem;
-        }
-
-        .container {
-          width: 92%;
-        }
-        
-        .header-card {
-          flex-direction: column;
-          gap: 1.5rem;
-          padding: 1.5rem 1rem;
-        }
-        
-        .header-card h1 {
-          font-size: 1.6rem;
-        }
-        
-        #label {
-          font-size: 1rem;
-          padding: 0.8rem 1.2rem;
-        }
-
-        .btn {
-          padding: 0.7rem 1.2rem;
-          font-size: 0.9rem;
-        }
+      
+      .footer {
+        position: absolute;
+        bottom: 30px;
+        font-family: 'Space Habitat', sans-serif;
+        font-size: 20px;
+        letter-spacing: 2px;
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <div class="card header-card">
-        <h1>Hệ thống nhận diện khuôn mặt</h1>
+    <div class="main-container">
+      <div class="app-name">
+        <h1>
+          <span class="app">APP</span><br>
+          CHECKIN
+        </h1>
+        <div class="admin-btn">Quản lý</div>
       </div>
-
-      <div class="card video-card">
-        <div class="video-container">
-          <img id="video" src="{{ url_for('video_feed') }}" width="640" height="480" />
-          <div class="frame-overlay">
-            <div class="frame-corner top-left"></div>
-            <div class="frame-corner top-right"></div>
-            <div class="frame-corner bottom-left"></div>
-            <div class="frame-corner bottom-right"></div>
-          </div>
+      
+      <div class="camera-container">
+        <div class="icon-top">
+          <img src="/static/images/icon.png" alt="Camera Icon">
         </div>
         
-        <div id="label">
-          <i class="fas fa-camera"></i> Đang nhận diện
-          <span class="loading-dots">
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span class="dot"></span>
-          </span>
+        <div class="camera-inner">
+          <img id="video" class="camera-feed" src="{{ url_for('video_feed') }}" alt="Camera Feed">
+          <div class="camera-status" id="status">Đang xác minh..</div>
         </div>
-        
-        <div id="status"></div>
-
-        <div class="footer-controls">
-          <a href="/train" class="btn" style="border-radius: 12px;">
-            <i class="fas fa-brain"></i> Trang huấn luyện
-          </a>
-        </div>
+      </div>
+      
+      <div class="instructions">
+        <h2>HƯỚNG DẪN</h2>
+        <ol>
+          <li>Nhân viên đứng trước mặt camera</li>
+          <li>Khi camera xác minh, nhận kết quả</li>
+        </ol>
+        <div class="complaint-btn">Khiếu nại</div>
       </div>
     </div>
-
+    
+    <div class="footer">LUCCYHANK</div>
+    
     <script>   
       let lastLabel = "";
       let unchangedTime = 0;
@@ -489,27 +250,18 @@
         if (locked) return;
 
         const newLabel = event.data;
-        const labelElement = document.getElementById("label");
+        const statusElement = document.getElementById("status");
         
         if (newLabel) {
-          labelElement.innerHTML = `<i class="fas fa-user-check"></i> Nhận diện: ${newLabel}`;
+          statusElement.textContent = `Đã xác minh: ${newLabel}`;
         } else {
-          labelElement.innerHTML = `<i class="fas fa-camera"></i> Đang nhận diện
-            <span class="loading-dots">
-              <span class="dot"></span>
-              <span class="dot"></span>
-              <span class="dot"></span>
-            </span>`;
+          statusElement.textContent = "Đang xác minh..";
         }
         
-        const statusElement = document.getElementById("status");
-
         if (newLabel && newLabel === lastLabel) {
           unchangedTime += 1000;
         } else {
           unchangedTime = 0;
-          statusElement.textContent = "";
-          statusElement.classList.remove("active");
           checking = false;
 
           // Hủy xác minh nếu nhãn thay đổi
@@ -522,8 +274,7 @@
 
         if (unchangedTime >= 3000 && !checking) {
           checking = true;
-          statusElement.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Đang xác minh nhân viên mã ${newLabel}`;
-          statusElement.classList.add("active");
+          statusElement.textContent = `Đang xác minh nhân viên mã ${newLabel}`;
           // Đặt bộ đếm thời gian và lưu ID vào `verifyTimeout`
           verifyTimeout = setTimeout(() => {
             if (checking && lastLabel === newLabel) {
@@ -532,8 +283,6 @@
               checkIn(newLabel);
             } else {
               checking = false;
-              statusElement.textContent = "";
-              statusElement.classList.remove("active");
             }
             verifyTimeout = null; // Reset biến sau khi kiểm tra xong
           }, 3000);
@@ -552,89 +301,39 @@
         })
           .then((response) => response.json())
           .then((data) => {
-            showSweetAlert(data);
+            alert(data.message);
+            setTimeout(() => {
+              resetState();
+            }, 3000);
           })
           .catch((error) => {
             console.error("Error:", error);
-            Swal.fire({
-              icon: 'error',
-              title: 'Lỗi',
-              text: 'Đã xảy ra lỗi khi xử lý yêu cầu.',
-              background: '#1e1e1e',
-              color: '#ffffff',
-              confirmButtonColor: '#888888',
-              iconColor: '#ffffff',
-              showClass: {
-                popup: 'animate__animated animate__fadeInDown'
-              },
-              hideClass: {
-                popup: 'animate__animated animate__fadeOutUp'
-              }
-            });
+            alert("Đã xảy ra lỗi khi xử lý yêu cầu.");
             resetState(); // Đảm bảo reset lại nếu có lỗi
           });
       }
 
-      function showSweetAlert(data) {
-        const checkInTime = data.employee.check_in_time || "N/A";
-        const checkOutTime = data.employee.check_out_time || "N/A";
-        const isCheckIn = data.message.includes("check-in");
-        const statusText = isCheckIn ? "CHECK-IN THÀNH CÔNG" : "CHECK-OUT THÀNH CÔNG";
-
-        Swal.fire({
-          html: `
-            <div class="checkmark-circle">
-              <div class="background"></div>
-              <div class="checkmark draw"></div>
-            </div>
-            <div class="status-message">
-              ${statusText}
-            </div>
-            <div class="status-box">
-              <div class="status-item">
-                <div class="status-icon"><i class="fas fa-id-card"></i></div>
-                <div style="margin-left: 12px;"><strong>ID:</strong> ${data.employee.id}</div>
-              </div>
-              <div class="status-item">
-                <div class="status-icon"><i class="fas fa-user"></i></div>
-                <div style="margin-left: 12px;"><strong>Tên:</strong> ${data.employee.name}</div>
-              </div>
-              <div class="status-item">
-                <div class="status-icon"><i class="fas fa-sign-in-alt"></i></div>
-                <div style="margin-left: 12px;"><strong>Giờ vào:</strong> ${checkInTime}</div>
-              </div>
-              <div class="status-item">
-                <div class="status-icon"><i class="fas fa-sign-out-alt"></i></div>
-                <div style="margin-left: 12px;"><strong>Giờ ra:</strong> ${checkOutTime}</div>
-              </div>
-            </div>
-          `,
-          showTitle: false,
-          icon: null,
-          customClass: {
-            popup: 'success-checkin'
-          },
-          background: '#1e1e1e',
-          color: '#ffffff',
-          confirmButtonColor: '#888888',
-          timer: 5000,
-          timerProgressBar: true,
-          showConfirmButton: true,
-          confirmButtonText: 'Đóng',
-          didClose: () => {
-            resetState();
-          }
-        });
-      }
-
-      // Reset lại trạng thái để hệ thống tiếp tục xác minh nhân viên mới
       function resetState() {
         locked = false;
         checking = false;
-        unchangedTime = 0;
         lastLabel = "";
-        startEventSource(); // Mở lại EventSource để tiếp tục nhận dữ liệu
+        unchangedTime = 0;
+        document.getElementById("status").textContent = "Đang xác minh..";
+        startEventSource();
       }
+
+      // Khởi động lại EventSource khi trang được tải
+      window.onload = function() {
+        startEventSource();
+      };
+
+      document.querySelector('.admin-btn').addEventListener('click', function() {
+        window.location.href = '/train';
+      });
+
+      document.querySelector('.complaint-btn').addEventListener('click', function() {
+        window.location.href = '/complaint';
+      });
     </script>
   </body>
 </html>
